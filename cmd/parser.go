@@ -1,6 +1,13 @@
 package main
 
-import "strings"
+import (
+	"fmt"
+	"io"
+	"log"
+	"strings"
+
+	"golang.org/x/net/html"
+)
 
 // RULES FOR FINDING THE "IMPORTANT LINKS"
 // - Skip anything inside parentheses
@@ -11,39 +18,34 @@ import "strings"
 // - Skip red links and external links
 // - Skip non-article links - pronunciation/IPA help and namespaces like File:, Help:, Wikpedia:, etc
 
-// this function receives the returned json as input and then parses to look for the relevant links
-func parser(content string) {
-	// the aim of this is to find the "important links"
+// this function receives the returned decoded json as input, then parses to build a DOM tree
+// (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
+func parser(arg *WikiPageRes) (string, error) {
+	wikiHTMLContent := arg.Parse.Text
+
+	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
+
+	count := 0
+
+	// Now we look for the relevant "<p>" tags
 	for {
-		paragraphIdx := getParagraphIdx(content)
+		tokenType := tokenizer.Next()
 
-	}
-}
+		switch tokenType {
+		case html.ErrorToken:
+			if tokenizer.Err() == io.EOF {
+				log.Printf("\033[31mend of file reached\033[0m")
+				return "", io.EOF
+			}
 
-func getParagraphIdx(s string) int {
-	return strings.Index(s, "<p>")
-}
+			return "", tokenizer.Err()
 
-func searchForValidLink(substring string) (string, bool) {
-	target := "<a href=\""
-
-	for {
-		linkIdx := strings.Index(substring, "<a href=")
-
-		if linkIdx == -1 {
-			return "", false
+		case html.StartTagToken, html.SelfClosingTagToken:
+			if tokenName := tokenizer.Token().Data; tokenName == "p" {
+				fmt.Println("Found a <p> tag")
+				fmt.Printf("the paragraph token has been found %d times\n", count+1)
+				count++
+			}
 		}
-
-		// extract out the actual link
-
-
-		// look for the opening parenthesis
-		parenIndex := strings.Index(substring[:linkIdx], "(")
-		if parenIndex != -1 {
-			substring = substring[linkIdx+len(target):]
-			continue
-		}
-
-		// if
 	}
 }

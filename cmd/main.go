@@ -2,20 +2,37 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 )
 
 var BASE_URL = "https://en.wikipedia.org/w/api.php"
 var PARAMS = url.Values{
-	"action": {"parse"},
-	"format": {"json"},
-	"page":   {"Pet door"},
+	"action":        {"parse"},
+	"format":        {"json"},
+	"page":          {"Pet door"},
+	"formatversion": {"2"},
+}
+
+type LangLink struct {
+	Lang     string `json:"lang"`
+	Url      string `json:"url"`
+	Langname string `json:"langname"`
+	Autonym  string `json:"autonym"`
+	Title    string `json:"title"`
+}
+
+// define the shape of the Wikipedia response
+type WikiPageRes struct {
+	Parse struct {
+		Title     string     `json:"title"`
+		Text      string     `json:"text"`
+		LangLinks []LangLink `json:"langlinks"`
+	}
 }
 
 // let's make a simple fetch request to a wikipedia article to get the content and then
@@ -30,19 +47,14 @@ func main() {
 	}
 
 	// convert the response to a string for parsing by the parsing function
-	// parser()
-
-	err = os.WriteFile("dump.json", res, 0644)
-	if err != nil {
-		log.Fatalf("\033[31merror while writing to file: %v\033[0m", err)
-	}
+	parser(res)
 }
 
 func createClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
 }
 
-func fetch(client *http.Client, urlString string) ([]byte, error) {
+func fetch(client *http.Client, urlString string) (*WikiPageRes, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlString, nil)
 
 	// use the default methods to add the necessary query params
@@ -68,5 +80,13 @@ func fetch(client *http.Client, urlString string) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected status: %v", resp.Status)
 	}
 
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<15))
+	// Decode: JSON bytes -> struct
+	var wikiRes WikiPageRes
+	err = json.NewDecoder(resp.Body).Decode(&wikiRes)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &wikiRes, nil
 }
