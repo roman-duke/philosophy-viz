@@ -59,7 +59,7 @@ func parser(arg *WikiPageRes) (string, error) {
 					innerType := tokenizer.Next()
 
 					switch innerType {
-					case html.ErrorToken, html.EndTagToken:
+					case html.ErrorToken:
 						if tokenizer.Err() == io.EOF {
 							log.Printf("\033[31mend of file reached\033[0m")
 							return "", io.EOF
@@ -89,7 +89,7 @@ func parser(arg *WikiPageRes) (string, error) {
 						innerToken := tokenizer.Token()
 
 						if innerToken.DataAtom == atom.A {
-							validLink, ok := getLink(tokenizer)
+							validLink, ok := getLink(innerToken)
 
 							if !ok {
 								// just continue scanning if the link is not valid
@@ -105,16 +105,8 @@ func parser(arg *WikiPageRes) (string, error) {
 	}
 }
 
-func getLink(tokenizer *html.Tokenizer) (string, bool) {
-	tt := tokenizer.Next()
+func getLink(token html.Token) (string, bool) {
 	address := ""
-
-	if tt == html.ErrorToken || tt == html.EndTagToken {
-		// handle this error later
-		return "", false
-	}
-
-	token := tokenizer.Token()
 
 	for _, attr := range token.Attr {
 		// this is where we check the validity of the link

@@ -47,7 +47,13 @@ func main() {
 	}
 
 	// convert the response to a string for parsing by the parsing function
-	parser(res)
+	linkAddr, err := parser(res)
+
+	if err != nil {
+		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
+	}
+
+	fmt.Printf("New hyperlink found at: \033[36m%s\033[0m", linkAddr)
 }
 
 func createClient() *http.Client {
