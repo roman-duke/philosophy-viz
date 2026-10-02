@@ -54,6 +54,9 @@ func createClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
 }
 
+// given that this does something that is stateful, we have to pass a context to it
+// so that we can cancel on cleanup or something. I think that is the idiomatic way of
+// doing it in Go??
 func fetch(client *http.Client, urlString string) (*WikiPageRes, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlString, nil)
 
