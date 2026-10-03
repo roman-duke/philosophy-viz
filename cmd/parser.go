@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"regexp"
@@ -22,6 +24,13 @@ import (
 // This already guarantees that rules 4, 6 and 7
 var wikiLink = regexp.MustCompile(`^/wiki/[\w%-]+$`)
 
+// relevant ANSI sequence codes
+const (
+	Red   = "\033[31m"
+	Reset = "\033[0m"
+	Cyan  = "\033[36m"
+)
+
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
 func parser(arg *WikiPageRes) (string, error) {
@@ -31,76 +40,34 @@ func parser(arg *WikiPageRes) (string, error) {
 
 	// Now we look for the relevant "<p>" tags, as the "relevant" links are embedded
 	// in them.
+
+	// we keep a small queue of the parenthesis and only execute the body of the StartTagToken
+	// bit if the queue is empty (we don't care about anything embedded in parenthesis)
+	pQ := make([]string, 0)
+	targetAtom := atom.P
+
 	for {
-		tokenType := tokenizer.Next()
+		tag, err := tokenize(targetAtom, &pQ, tokenizer)
 
-		switch tokenType {
-		case html.ErrorToken:
-			if tokenizer.Err() == io.EOF {
-				log.Printf("\033[31mend of file reached\033[0m")
-				return "", io.EOF
+		// pTag error handling
+		pErr := tokenErrorHandler(err)
+		if pErr != nil {
+			return "", pErr
+		}
+
+		if tag != nil && targetAtom == atom.P {
+			targetAtom = atom.A
+		} else if tag != nil && targetAtom == atom.A {
+			fmt.Println("we have found our token", *tag)
+
+			validLink, ok := getLink(*tag)
+
+			if !ok {
+				// continue with the scanning if the link is not valid
+				continue
 			}
 
-			return "", tokenizer.Err()
-
-		case html.StartTagToken:
-			token := tokenizer.Token()
-			// remember to bring this back and use the regular string comparison to see the performance
-			// degradation (this current approach is faster as it's just an integer comparison)
-
-			if token.DataAtom == atom.P {
-				// check for all the children of this node (and then identify the "anchor" links)
-
-				// we keep a small queue of the parenthesis and only execute the body of the StartTagToken
-				// bit if the queue is empty
-				pQ := make([]string, 0)
-
-				for {
-					innerType := tokenizer.Next()
-
-					switch innerType {
-					case html.ErrorToken:
-						if tokenizer.Err() == io.EOF {
-							log.Printf("\033[31mend of file reached\033[0m")
-							return "", io.EOF
-						}
-
-						return "", tokenizer.Err()
-
-					case html.TextToken:
-						textT := tokenizer.Token()
-
-						// unlike the leetcode problem, we are guaranteed to have the parenthesis formatted
-						// in the correct order. hence we just pop or append based on the kind of parenthesis
-						// we encounter
-						switch textT.Data {
-						case "(":
-							pQ = append(pQ, "(")
-
-						case ")":
-							pQ = pQ[:len(pQ)-1]
-						}
-
-					case html.StartTagToken:
-						if len(pQ) != 0 {
-							continue
-						}
-
-						innerToken := tokenizer.Token()
-
-						if innerToken.DataAtom == atom.A {
-							validLink, ok := getLink(innerToken)
-
-							if !ok {
-								// just continue scanning if the link is not valid
-								continue
-							}
-
-							return validLink, nil
-						}
-					}
-				}
-			}
+			return validLink, nil
 		}
 	}
 }
@@ -117,4 +84,57 @@ func getLink(token html.Token) (string, bool) {
 	}
 
 	return address, true
+}
+
+func tokenize(tAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) (*html.Token, error) {
+	tokenType := tokenizer.Next()
+
+	switch tokenType {
+	case html.ErrorToken:
+		if tokenizer.Err() == io.EOF {
+			return nil, io.EOF
+		}
+
+		return nil, tokenizer.Err()
+
+	case html.StartTagToken:
+		if len(*pQ) != 0 {
+			fmt.Println("I am here bro!")
+			return nil, nil
+		}
+
+		token := tokenizer.Token()
+
+		if token.DataAtom == tAtom {
+			return &token, nil
+		}
+
+	case html.TextToken:
+		textT := tokenizer.Token()
+
+		// unlike the leetcode problem, we are guaranteed to have the parenthesis formatted
+		// in the correct order, hence we just pop or append based on the kind of parenthesis
+		// we encounter
+		switch textT.Data {
+		case "(":
+			*pQ = append(*pQ, "(")
+		case ")":
+			*pQ = (*pQ)[:len(*pQ)-1]
+		}
+
+		return nil, nil
+	}
+
+	return nil, nil
+}
+
+func tokenErrorHandler(err error) error {
+	if errors.Is(err, io.EOF) {
+		log.Printf("\033[31mend of file reached\033[0m")
+		return io.EOF
+	} else if err != nil {
+		return err
+	}
+
+	return nil
 }

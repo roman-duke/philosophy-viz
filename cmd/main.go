@@ -46,11 +46,12 @@ func main() {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
 	}
 
-	// convert the response to a string for parsing by the parsing function
+	// pass the pointer to the res body to the parser func to look for the
+	// valid link
 	linkAddr, err := parser(res)
 
 	if err != nil {
-		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
+		log.Fatalf("\033[31merror parsing html: %v\033[0m", err)
 	}
 
 	fmt.Printf("New hyperlink found at: \033[36m%s\033[0m", linkAddr)
