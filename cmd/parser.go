@@ -55,7 +55,10 @@ func parser(arg *WikiPageRes) (string, error) {
 			return "", pErr
 		}
 
+		// remember to switch the "targetAtom" bit because there may be cases where
+		// the link is not found in the first paragraph
 		if tag != nil && targetAtom == atom.P {
+			fmt.Println("we have found our paragraph token", *tag)
 			targetAtom = atom.A
 		} else if tag != nil && targetAtom == atom.A {
 			fmt.Println("we have found our token", *tag)
@@ -99,7 +102,6 @@ func tokenize(tAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) (*html.T
 
 	case html.StartTagToken:
 		if len(*pQ) != 0 {
-			fmt.Println("I am here bro!")
 			return nil, nil
 		}
 

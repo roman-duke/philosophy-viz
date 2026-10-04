@@ -14,7 +14,7 @@ var BASE_URL = "https://en.wikipedia.org/w/api.php"
 var PARAMS = url.Values{
 	"action":        {"parse"},
 	"format":        {"json"},
-	"page":          {"Pet door"},
+	"page":          {"Albert Einstein"},
 	"formatversion": {"2"},
 }
 
