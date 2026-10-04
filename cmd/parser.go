@@ -22,7 +22,7 @@ import (
 // - 7. Skip non-article links - pronunciation/IPA help and namespaces like File:, Help:, Wikpedia:, etc
 
 // This already guarantees that rules 4, 6 and 7
-var wikiLink = regexp.MustCompile(`^/wiki/[\w%-]+$`)
+var wikiLink = regexp.MustCompile(`^/wiki/[^:#?]+$`)
 
 // relevant ANSI sequence codes
 const (
@@ -44,10 +44,10 @@ func parser(arg *WikiPageRes) (string, error) {
 	// we keep a small queue of the parenthesis and only execute the body of the StartTagToken
 	// bit if the queue is empty (we don't care about anything embedded in parenthesis)
 	pQ := make([]string, 0)
-	targetAtom := atom.P
+	targetAtom, wrapperAtom := atom.P, atom.P
 
 	for {
-		tag, err := tokenize(targetAtom, &pQ, tokenizer)
+		tag, err := tokenize(targetAtom, wrapperAtom, &pQ, tokenizer)
 
 		// pTag error handling
 		pErr := tokenErrorHandler(err)
@@ -57,11 +57,16 @@ func parser(arg *WikiPageRes) (string, error) {
 
 		// remember to switch the "targetAtom" bit because there may be cases where
 		// the link is not found in the first paragraph
-		if tag != nil && targetAtom == atom.P {
-			fmt.Println("we have found our paragraph token", *tag)
+		if tag != nil && tag.DataAtom == atom.P && tag.Type == html.StartTagToken {
+			fmt.Println("we have found the start of our paragraph token", *tag)
 			targetAtom = atom.A
-		} else if tag != nil && targetAtom == atom.A {
-			fmt.Println("we have found our token", *tag)
+		}
+
+		if tag != nil && tag.DataAtom == atom.P && tag.Type == html.EndTagToken {
+			fmt.Println("we have found the end of our paragraph token", *tag)
+			targetAtom = atom.P
+		} else if tag != nil && tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
+			fmt.Println("we have found our anchor token", *tag)
 
 			validLink, ok := getLink(*tag)
 
@@ -82,14 +87,14 @@ func getLink(token html.Token) (string, bool) {
 		// this is where we check the validity of the link
 		if attr.Key == "href" && wikiLink.Match([]byte(attr.Val)) {
 			address = attr.Val
-			break
+			return address, true
 		}
 	}
 
-	return address, true
+	return address, false
 }
 
-func tokenize(tAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) (*html.Token, error) {
+func tokenize(tAtom, twAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) (*html.Token, error) {
 	tokenType := tokenizer.Next()
 
 	switch tokenType {
@@ -100,31 +105,35 @@ func tokenize(tAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) (*html.T
 
 		return nil, tokenizer.Err()
 
-	case html.StartTagToken:
+	case html.StartTagToken, html.EndTagToken:
 		if len(*pQ) != 0 {
 			return nil, nil
 		}
 
 		token := tokenizer.Token()
 
-		if token.DataAtom == tAtom {
+		// we only return the token if we encountered our "target" token
+		if token.DataAtom == tAtom || token.DataAtom == twAtom {
 			return &token, nil
 		}
 
 	case html.TextToken:
-		textT := tokenizer.Token()
+		if tAtom == atom.A {
+			textT := tokenizer.Token()
 
-		// unlike the leetcode problem, we are guaranteed to have the parenthesis formatted
-		// in the correct order, hence we just pop or append based on the kind of parenthesis
-		// we encounter
-		switch textT.Data {
-		case "(":
-			*pQ = append(*pQ, "(")
-		case ")":
-			*pQ = (*pQ)[:len(*pQ)-1]
+			// unlike the leetcode problem, we are guaranteed to have the parenthesis formatted
+			// in the correct order, hence we just pop or append based on the kind of parenthesis
+			// we encounter
+			trimmedText := strings.TrimSpace(textT.Data)
+
+			if strings.Contains(trimmedText, "(") {
+				*pQ = append(*pQ, "(")
+			}
+
+			if strings.Contains(trimmedText, ")") {
+				*pQ = (*pQ)[:len(*pQ)-1]
+			}
 		}
-
-		return nil, nil
 	}
 
 	return nil, nil
