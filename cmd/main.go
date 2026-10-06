@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -14,7 +16,7 @@ var BASE_URL = "https://en.wikipedia.org/w/api.php"
 var PARAMS = url.Values{
 	"action":        {"parse"},
 	"format":        {"json"},
-	"page":          {"Albert Einstein"},
+	// "page":          {"Albert Einstein"},
 	"formatversion": {"2"},
 }
 
@@ -35,26 +37,64 @@ type WikiPageRes struct {
 	}
 }
 
+var client *http.Client
+
 // let's make a simple fetch request to a wikipedia article to get the content and then
 // log it to console
 func main() {
 	// create the necessarsy connection pool
-	client := createClient()
+	client = createClient()
 
-	res, err := fetch(client, BASE_URL)
+	paths, err := getToPhilosophy("Albert Einstein", "", PARAMS)
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
 	}
 
-	// pass the pointer to the res body to the parser func to look for the
-	// valid link
-	linkAddr, err := parser(res)
+	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m", paths)
+}
 
-	if err != nil {
-		log.Fatalf("\033[31merror parsing html: %v\033[0m", err)
+// function to recursively get to philosophy
+func getToPhilosophy(node, prevPage string, params url.Values) ([]string, error) {
+	visitedLinks := make([]string, 0)
+
+	for node != "Philosophy" {
+		// update the map of url.Values with the new page key
+		params.Set("page", node)
+
+		res, err := fetch(client, BASE_URL, params)
+
+		if err != nil {
+			return visitedLinks, err
+		}
+
+		// pass the pointer to the res body to the parser func to look for the valid link
+		linkAddr, err := parser(res, prevPage)
+
+		if err != nil {
+			return visitedLinks, err
+		}
+
+		nextNode := strings.TrimPrefix(linkAddr, "/wiki/")
+
+		fmt.Println("Here is our next node", nextNode)
+
+		// handle this error here just for consistency purposes, but it is currently impossible
+		// that there would be any error because of what the parser does for us under the hood
+		// the error is actualy more so a "logical" error
+
+		if len(nextNode) == len(linkAddr) {
+			return visitedLinks, errors.New("invalid link returned by parser")
+		}
+
+		// set prevPage to be current node (parser uses this internally)
+		prevPage = node
+
+		// sleep a bit, so as not to constantly bombard Wiki's server
+		time.Sleep(time.Millisecond * 20)
+		getToPhilosophy(nextNode, prevPage, params)
 	}
 
-	fmt.Printf("New hyperlink found at: \033[36m%s\033[0m", linkAddr)
+	return visitedLinks, nil
 }
 
 func createClient() *http.Client {
@@ -64,11 +104,11 @@ func createClient() *http.Client {
 // given that this does something that is stateful, we have to pass a context to it
 // so that we can cancel on cleanup or something. I think that is the idiomatic way of
 // doing it in Go??
-func fetch(client *http.Client, urlString string) (*WikiPageRes, error) {
+func fetch(client *http.Client, urlString string, params url.Values) (*WikiPageRes, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlString, nil)
 
 	// use the default methods to add the necessary query params
-	req.URL.RawQuery = url.Values.Encode(PARAMS)
+	req.URL.RawQuery = url.Values.Encode(params)
 
 	log.Printf("The url to fetch from: %s", req.URL.String())
 

@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"fmt"
+	// "fmt"
 	"io"
 	"log"
 	"regexp"
@@ -33,7 +33,7 @@ const (
 
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
-func parser(arg *WikiPageRes) (string, error) {
+func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 	wikiHTMLContent := arg.Parse.Text
 
 	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
@@ -58,17 +58,17 @@ func parser(arg *WikiPageRes) (string, error) {
 		// remember to switch the "targetAtom" bit because there may be cases where
 		// the link is not found in the first paragraph
 		if tag != nil && tag.DataAtom == atom.P && tag.Type == html.StartTagToken {
-			fmt.Println("we have found the start of our paragraph token", *tag)
+			// fmt.Println("we have found the start of our paragraph token", *tag)
 			targetAtom = atom.A
 		}
 
 		if tag != nil && tag.DataAtom == atom.P && tag.Type == html.EndTagToken {
-			fmt.Println("we have found the end of our paragraph token", *tag)
+			// fmt.Println("we have found the end of our paragraph token", *tag)
 			targetAtom = atom.P
 		} else if tag != nil && tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
-			fmt.Println("we have found our anchor token", *tag)
+			// fmt.Println("we have found our anchor token", *tag)
 
-			validLink, ok := getLink(*tag)
+			validLink, ok := getLink(*tag, prevTitle)
 
 			if !ok {
 				// continue with the scanning if the link is not valid
@@ -80,12 +80,13 @@ func parser(arg *WikiPageRes) (string, error) {
 	}
 }
 
-func getLink(token html.Token) (string, bool) {
+func getLink(token html.Token, blacklistTitle string) (string, bool) {
 	address := ""
 
 	for _, attr := range token.Attr {
 		// this is where we check the validity of the link
-		if attr.Key == "href" && wikiLink.Match([]byte(attr.Val)) {
+		// links that go back to already visited pages are also deemed "invalid"
+		if attr.Key == "href" && wikiLink.Match([]byte(attr.Val)) && strings.TrimPrefix(attr.Val, "/wiki/") != blacklistTitle {
 			address = attr.Val
 			return address, true
 		}
