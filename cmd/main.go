@@ -14,8 +14,8 @@ import (
 
 var BASE_URL = "https://en.wikipedia.org/w/api.php"
 var PARAMS = url.Values{
-	"action":        {"parse"},
-	"format":        {"json"},
+	"action": {"parse"},
+	"format": {"json"},
 	// "page":          {"Albert Einstein"},
 	"formatversion": {"2"},
 }
@@ -45,7 +45,10 @@ func main() {
 	// create the necessarsy connection pool
 	client = createClient()
 
-	paths, err := getToPhilosophy("Albert Einstein", "", PARAMS)
+	visitedLinks := make([]string, 0)
+
+	paths, err := getToPhilosophy("Alireza Firouzja", "", visitedLinks, PARAMS)
+
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
 	}
@@ -54,8 +57,7 @@ func main() {
 }
 
 // function to recursively get to philosophy
-func getToPhilosophy(node, prevPage string, params url.Values) ([]string, error) {
-	visitedLinks := make([]string, 0)
+func getToPhilosophy(node, prevPage string, links []string, params url.Values) ([]string, error) {
 
 	for node != "Philosophy" {
 		// update the map of url.Values with the new page key
@@ -64,37 +66,37 @@ func getToPhilosophy(node, prevPage string, params url.Values) ([]string, error)
 		res, err := fetch(client, BASE_URL, params)
 
 		if err != nil {
-			return visitedLinks, err
+			return links, err
 		}
 
 		// pass the pointer to the res body to the parser func to look for the valid link
 		linkAddr, err := parser(res, prevPage)
 
 		if err != nil {
-			return visitedLinks, err
+			return links, err
 		}
 
 		nextNode := strings.TrimPrefix(linkAddr, "/wiki/")
 
-		fmt.Println("Here is our next node", nextNode)
+		fmt.Println("Here is our next node:", nextNode)
 
 		// handle this error here just for consistency purposes, but it is currently impossible
 		// that there would be any error because of what the parser does for us under the hood
 		// the error is actualy more so a "logical" error
-
 		if len(nextNode) == len(linkAddr) {
-			return visitedLinks, errors.New("invalid link returned by parser")
+			return links, errors.New("invalid link returned by parser")
 		}
 
 		// set prevPage to be current node (parser uses this internally)
 		prevPage = node
 
 		// sleep a bit, so as not to constantly bombard Wiki's server
+		links = append(links, linkAddr)
 		time.Sleep(time.Millisecond * 20)
-		getToPhilosophy(nextNode, prevPage, params)
+		getToPhilosophy(nextNode, prevPage, links, params)
 	}
 
-	return visitedLinks, nil
+	return links, nil
 }
 
 func createClient() *http.Client {

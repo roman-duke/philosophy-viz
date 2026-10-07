@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	// "slices"
 	// "fmt"
 	"io"
 	"log"
@@ -44,10 +45,13 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 	// we keep a small queue of the parenthesis and only execute the body of the StartTagToken
 	// bit if the queue is empty (we don't care about anything embedded in parenthesis)
 	pQ := make([]string, 0)
+
+	// we also keep a small queue of the tag too
+	tQ := make([]string, 0)
 	targetAtom, wrapperAtom := atom.P, atom.P
 
 	for {
-		tag, err := tokenize(targetAtom, wrapperAtom, &pQ, tokenizer)
+		tag, err := tokenize(targetAtom, wrapperAtom, &pQ, &tQ, tokenizer)
 
 		// pTag error handling
 		pErr := tokenErrorHandler(err)
@@ -95,7 +99,7 @@ func getLink(token html.Token, blacklistTitle string) (string, bool) {
 	return address, false
 }
 
-func tokenize(tAtom, twAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) (*html.Token, error) {
+func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, tokenizer *html.Tokenizer) (*html.Token, error) {
 	tokenType := tokenizer.Next()
 
 	switch tokenType {
@@ -114,8 +118,16 @@ func tokenize(tAtom, twAtom atom.Atom, pQ *[]string, tokenizer *html.Tokenizer) 
 		token := tokenizer.Token()
 
 		// we only return the token if we encountered our "target" token
-		if token.DataAtom == tAtom || token.DataAtom == twAtom {
+		// our main focus is "p" tags in the "main body" of the article
+		if token.DataAtom == tAtom || token.DataAtom == twAtom && len(*tags) == 0 {
 			return &token, nil
+		}
+
+		switch token.Type {
+		case html.StartTagToken:
+			*tags = append(*tags, token.Data)
+		case html.EndTagToken:
+			*tags = (*tags)[:len(*tags)-1]
 		}
 
 	case html.TextToken:
