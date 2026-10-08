@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	// "slices"
 	// "fmt"
 	"io"
@@ -27,9 +28,11 @@ var wikiLink = regexp.MustCompile(`^/wiki/[^:#?]+$`)
 
 // relevant ANSI sequence codes
 const (
-	Red   = "\033[31m"
+	Bold = "\033[1m"
 	Reset = "\033[0m"
+	Red   = "\033[31m"
 	Cyan  = "\033[36m"
+	Magenta = "\033[35m"
 )
 
 // this function receives the returned decoded json as input, then parses to build a DOM tree
@@ -48,7 +51,12 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 
 	// we also keep a small queue of the tag too
 	tQ := make([]string, 0)
-	targetAtom, wrapperAtom := atom.P, atom.P
+
+	// our targetAtom starts out as a div; we then check if we actually got content or we got a
+	// redirect. In the case where we got content, we switch the target atom to look for a "p" tag
+	// and then "a" afterwards. If we instead got a redirectMsg, then we just look for the redirect
+	// link
+	targetAtom, wrapperAtom := atom.Div, atom.P
 
 	for {
 		tag, err := tokenize(targetAtom, wrapperAtom, &pQ, &tQ, tokenizer)
@@ -59,18 +67,33 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 			return "", pErr
 		}
 
-		// remember to switch the "targetAtom" bit because there may be cases where
-		// the link is not found in the first paragraph
-		if tag != nil && tag.DataAtom == atom.P && tag.Type == html.StartTagToken {
+		// remember to switch the "targetAtom" bit so as not to scan for anchor tags in irrelevant
+		// places
+		if tag == nil {
+			continue
+		} else if tag.DataAtom == atom.Div {
+			for _, attr := range tag.Attr {
+				// if the returned div contains the redirectmsg class, then switch to look for that link
+				// else continue the tokenization process normally.
+				if attr.Key == "class" && strings.Contains(attr.Val, "redirectMsg") {
+					fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Cyan, Reset)
+					fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Cyan, Reset)
+					targetAtom = atom.A
+					fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Cyan, atom.A, Reset)
+					break
+				} else if attr.Key == "class" && strings.Contains(attr.Val, "shortdescription") {
+					targetAtom = atom.P
+					break
+				}
+			}
+		} else if tag.DataAtom == atom.P && tag.Type == html.StartTagToken {
 			// fmt.Println("we have found the start of our paragraph token", *tag)
 			targetAtom = atom.A
-		}
-
-		if tag != nil && tag.DataAtom == atom.P && tag.Type == html.EndTagToken {
+		} else if tag.DataAtom == atom.P && tag.Type == html.EndTagToken {
 			// fmt.Println("we have found the end of our paragraph token", *tag)
 			targetAtom = atom.P
-		} else if tag != nil && tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
-			// fmt.Println("we have found our anchor token", *tag)
+		} else if tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
+			fmt.Printf("%s%sfound our anchor tag: (%s)!%s\n", Bold, Cyan, *tag, Reset)
 
 			validLink, ok := getLink(*tag, prevTitle)
 
@@ -119,7 +142,20 @@ func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, tokenizer *html.Token
 
 		// we only return the token if we encountered our "target" token
 		// our main focus is "p" tags in the "main body" of the article
-		if token.DataAtom == tAtom || token.DataAtom == twAtom && len(*tags) == 0 {
+		if (token.DataAtom == tAtom || token.DataAtom == twAtom) && len(*tags) == 0 {
+			if tAtom == atom.Div {
+				fmt.Printf("%s%sfor some reason, this is still our tAtom: (%s)%s\n", Bold, Magenta, tAtom, Reset)
+
+				// get the value of the class attribute
+				for _, attr := range token.Attr {
+					if attr.Key == "class" && (strings.Contains(attr.Val, "redirectMsg") || strings.Contains(attr.Val, "shortdescription")) {
+						return &token, nil
+					}
+				}
+
+				return nil, nil
+			}
+
 			return &token, nil
 		}
 
@@ -127,7 +163,9 @@ func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, tokenizer *html.Token
 		case html.StartTagToken:
 			*tags = append(*tags, token.Data)
 		case html.EndTagToken:
-			*tags = (*tags)[:len(*tags)-1]
+			if len(*tags) > 0 {
+				*tags = (*tags)[:len(*tags)-1]
+			}
 		}
 
 	case html.TextToken:
