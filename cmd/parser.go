@@ -32,6 +32,7 @@ const (
 	Reset   = "\033[0m"
 	Red     = "\033[31m"
 	Cyan    = "\033[36m"
+	Yellow  = "\033[33m"
 	Magenta = "\033[35m"
 )
 
@@ -80,11 +81,11 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 				// if the returned div contains the redirectmsg class, then switch to look for that link
 				// else continue the tokenization process normally.
 				if attr.Key == "class" && strings.Contains(attr.Val, "redirectMsg") {
-					fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Cyan, Reset)
-					fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Cyan, Reset)
+					fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Yellow, Reset)
+					fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Yellow, Reset)
 					redirectFlag = true
 					targetAtom = atom.A
-					fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Cyan, atom.A, Reset)
+					fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Yellow, atom.A, Reset)
 					break
 				} else if attr.Key == "class" && strings.Contains(attr.Val, "shortdescription") {
 					targetAtom = atom.P

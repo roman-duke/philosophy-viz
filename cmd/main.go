@@ -59,7 +59,7 @@ func main() {
 // function to recursively get to philosophy
 func getToPhilosophy(node, prevPage string, links []string, params url.Values) ([]string, error) {
 
-	for strings.TrimSpace(node) != "Philosophy" {
+	for node != "Philosophy" {
 		fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
 
 		// update the map of url.Values with the new page key
@@ -96,6 +96,11 @@ func getToPhilosophy(node, prevPage string, links []string, params url.Values) (
 		// sleep a bit, so as not to constantly bombard Wiki's server
 		links = append(links, linkAddr)
 		time.Sleep(time.Millisecond * 20)
+
+		fmt.Printf("Here is our next node just before we run recursively call bro! -> %s%s(%s)%s\n", Bold, Cyan, nextNode, Reset)
+		// missing return or break statemen here causes the previous function at the top of the stack to be stuck
+		// actually, this is so retarded lolll. Damn, why do we have recursion and iteration combined when they
+		// are "serving" the same purpose?
 		getToPhilosophy(nextNode, prevPage, links, params)
 	}
 
