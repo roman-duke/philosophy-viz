@@ -59,7 +59,9 @@ func main() {
 // function to recursively get to philosophy
 func getToPhilosophy(node, prevPage string, links []string, params url.Values) ([]string, error) {
 
-	for node != "Philosophy" {
+	for strings.TrimSpace(node) != "Philosophy" {
+		fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
+
 		// update the map of url.Values with the new page key
 		params.Set("page", node)
 
@@ -79,6 +81,7 @@ func getToPhilosophy(node, prevPage string, links []string, params url.Values) (
 		nextNode := strings.TrimPrefix(linkAddr, "/wiki/")
 
 		fmt.Println("Here is our next node:", nextNode)
+		fmt.Println("length of our new node", len(nextNode))
 
 		// handle this error here just for consistency purposes, but it is currently impossible
 		// that there would be any error because of what the parser does for us under the hood

@@ -28,10 +28,10 @@ var wikiLink = regexp.MustCompile(`^/wiki/[^:#?]+$`)
 
 // relevant ANSI sequence codes
 const (
-	Bold = "\033[1m"
-	Reset = "\033[0m"
-	Red   = "\033[31m"
-	Cyan  = "\033[36m"
+	Bold    = "\033[1m"
+	Reset   = "\033[0m"
+	Red     = "\033[31m"
+	Cyan    = "\033[36m"
 	Magenta = "\033[35m"
 )
 
@@ -58,8 +58,12 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 	// link
 	targetAtom, wrapperAtom := atom.Div, atom.P
 
+	// this tells us if we should search for anchor tags within a "p" tag or within any tag in the case
+	// of our redirect response
+	redirectFlag := false
+
 	for {
-		tag, err := tokenize(targetAtom, wrapperAtom, &pQ, &tQ, tokenizer)
+		tag, err := tokenize(targetAtom, wrapperAtom, &pQ, &tQ, redirectFlag, tokenizer)
 
 		// pTag error handling
 		pErr := tokenErrorHandler(err)
@@ -78,6 +82,7 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 				if attr.Key == "class" && strings.Contains(attr.Val, "redirectMsg") {
 					fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Cyan, Reset)
 					fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Cyan, Reset)
+					redirectFlag = true
 					targetAtom = atom.A
 					fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Cyan, atom.A, Reset)
 					break
@@ -91,7 +96,12 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 			targetAtom = atom.A
 		} else if tag.DataAtom == atom.P && tag.Type == html.EndTagToken {
 			// fmt.Println("we have found the end of our paragraph token", *tag)
-			targetAtom = atom.P
+			if redirectFlag {
+				fmt.Println("our redirect flag is true!")
+				targetAtom = atom.A
+			} else {
+				targetAtom = atom.P
+			}
 		} else if tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
 			fmt.Printf("%s%sfound our anchor tag: (%s)!%s\n", Bold, Cyan, *tag, Reset)
 
@@ -122,7 +132,7 @@ func getLink(token html.Token, blacklistTitle string) (string, bool) {
 	return address, false
 }
 
-func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, tokenizer *html.Tokenizer) (*html.Token, error) {
+func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, r bool, tokenizer *html.Tokenizer) (*html.Token, error) {
 	tokenType := tokenizer.Next()
 
 	switch tokenType {
@@ -142,10 +152,10 @@ func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, tokenizer *html.Token
 
 		// we only return the token if we encountered our "target" token
 		// our main focus is "p" tags in the "main body" of the article
-		if (token.DataAtom == tAtom || token.DataAtom == twAtom) && len(*tags) == 0 {
+		if r && token.DataAtom == tAtom {
+			return &token, nil
+		} else if (token.DataAtom == tAtom || token.DataAtom == twAtom) && len(*tags) == 0 {
 			if tAtom == atom.Div {
-				fmt.Printf("%s%sfor some reason, this is still our tAtom: (%s)%s\n", Bold, Magenta, tAtom, Reset)
-
 				// get the value of the class attribute
 				for _, attr := range token.Attr {
 					if attr.Key == "class" && (strings.Contains(attr.Val, "redirectMsg") || strings.Contains(attr.Val, "shortdescription")) {
