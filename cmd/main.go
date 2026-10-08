@@ -45,66 +45,69 @@ func main() {
 	// create the necessarsy connection pool
 	client = createClient()
 
-	visitedLinks := make([]string, 0)
+	visitedTitles := make([]string, 0)
 
-	paths, err := getToPhilosophy("Alireza Firouzja", "", visitedLinks, PARAMS)
+	paths, err := getToPhilosophy("Alireza Firouzja", "", &visitedTitles, PARAMS)
 
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
 	}
-
-	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m", paths)
+	
+	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m", *paths)
 }
 
 // function to recursively get to philosophy
-func getToPhilosophy(node, prevPage string, links []string, params url.Values) ([]string, error) {
+func getToPhilosophy(node, prevPage string, titles *[]string, params url.Values) (*[]string, error) {
 
-	for node != "Philosophy" {
-		fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
-
-		// update the map of url.Values with the new page key
-		params.Set("page", node)
-
-		res, err := fetch(client, BASE_URL, params)
-
-		if err != nil {
-			return links, err
-		}
-
-		// pass the pointer to the res body to the parser func to look for the valid link
-		linkAddr, err := parser(res, prevPage)
-
-		if err != nil {
-			return links, err
-		}
-
-		nextNode := strings.TrimPrefix(linkAddr, "/wiki/")
-
-		fmt.Println("Here is our next node:", nextNode)
-		fmt.Println("length of our new node", len(nextNode))
-
-		// handle this error here just for consistency purposes, but it is currently impossible
-		// that there would be any error because of what the parser does for us under the hood
-		// the error is actualy more so a "logical" error
-		if len(nextNode) == len(linkAddr) {
-			return links, errors.New("invalid link returned by parser")
-		}
-
-		// set prevPage to be current node (parser uses this internally)
-		prevPage = node
-
-		// sleep a bit, so as not to constantly bombard Wiki's server
-		links = append(links, linkAddr)
-		time.Sleep(time.Millisecond * 20)
-
-		fmt.Printf("Here is our next node just before we run recursively call bro! -> %s%s(%s)%s\n", Bold, Cyan, nextNode, Reset)
-		// missing return or break statemen here causes the previous function at the top of the stack to be stuck
-		// actually, this is so retarded lolll. Damn, why do we have recursion and iteration combined when they
-		// are "serving" the same purpose?
-		getToPhilosophy(nextNode, prevPage, links, params)
+	// our terminator case
+	if node == "Philosophy" {
+		return titles, nil
 	}
 
-	return links, nil
+	fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
+
+	// update the map of url.Values with the new page key
+	params.Set("page", node)
+
+	res, err := fetch(client, BASE_URL, params)
+
+	if err != nil {
+		return titles, err
+	}
+
+	// pass the pointer to the res body to the parser func to look for the valid link
+	linkAddr, err := parser(res, prevPage)
+
+	if err != nil {
+		return titles, err
+	}
+
+	nextNode := strings.TrimPrefix(linkAddr, "/wiki/")
+
+	fmt.Println("Here is our next node:", nextNode)
+	fmt.Println("length of our new node", len(nextNode))
+
+	// handle this error here just for consistency purposes, but it is currently impossible
+	// that there would be any error because of what the parser does for us under the hood
+	// the error is actualy more so a "logical" error
+	if len(nextNode) == len(linkAddr) {
+		return titles, errors.New("invalid link returned by parser")
+	}
+
+	// set prevPage to be current node (parser uses this internally)
+	prevPage = node
+
+	// sleep a bit, so as not to constantly bombard Wiki's server
+	*titles = append(*titles, nextNode)
+	time.Sleep(time.Millisecond * 20)
+
+	fmt.Printf("Here is our next node just before we run recursively call bro! -> %s%s(%s)%s\n", Bold, Cyan, nextNode, Reset)
+	// missing return or break statemen here causes the previous function at the top of the stack to be stuck
+	// actually, this is so retarded lolll. Damn, why do we have recursion and iteration combined when they
+	// are "serving" the same purpose?
+	getToPhilosophy(nextNode, prevPage, titles, params)
+
+	return titles, nil
 }
 
 func createClient() *http.Client {
