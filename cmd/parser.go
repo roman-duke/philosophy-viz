@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
+
 	// "slices"
 	// "fmt"
 	"io"
@@ -36,9 +38,12 @@ const (
 	Magenta = "\033[35m"
 )
 
+// ===================================== errors ============================================//
+var ErrLoopLink = errors.New("link causes loop")
+
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
-func parser(arg *WikiPageRes, prevTitle string) (string, error) {
+func parser(arg *WikiPageRes, mode string, visited []string) (string, error) {
 	wikiHTMLContent := arg.Parse.Text
 
 	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
@@ -106,11 +111,33 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 		} else if tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
 			fmt.Printf("%s%sfound our anchor tag: (%s)!%s\n", Bold, Cyan, *tag, Reset)
 
-			validLink, ok := getLink(*tag, prevTitle)
+			validLink, ok := getLink(*tag)
 
 			if !ok {
 				// continue with the scanning if the link is not valid
 				continue
+			}
+
+			idx := slices.IndexFunc(visited, func(l string) bool {
+				return l == strings.TrimPrefix(validLink, "/wiki/")
+			})
+
+			switch mode {
+			// if the mode is strict and we encounter a link that would cause a loop,
+			// then we just return an application logical error which we can check in
+			// the call site and act accordingly
+			case "strict":
+				if idx != -1 {
+					return "", ErrLoopLink
+				}
+
+			// if the mode is "relaxed" and we encounter a link that would cause a loop,
+			// then we keep searching till we find one that won't cause a loop.
+			case "relaxed":
+
+				if idx != -1 {
+					continue
+				}
 			}
 
 			return validLink, nil
@@ -118,13 +145,13 @@ func parser(arg *WikiPageRes, prevTitle string) (string, error) {
 	}
 }
 
-func getLink(token html.Token, blacklistTitle string) (string, bool) {
+func getLink(token html.Token) (string, bool) {
 	address := ""
 
 	for _, attr := range token.Attr {
 		// this is where we check the validity of the link
 		// links that go back to already visited pages are also deemed "invalid"
-		if attr.Key == "href" && wikiLink.Match([]byte(attr.Val)) && strings.TrimPrefix(attr.Val, "/wiki/") != blacklistTitle {
+		if attr.Key == "href" && wikiLink.Match([]byte(attr.Val)) {
 			address = attr.Val
 			return address, true
 		}

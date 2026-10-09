@@ -47,17 +47,18 @@ func main() {
 
 	visitedTitles := make([]string, 0)
 
-	paths, err := getToPhilosophy("Alireza Firouzja", "", &visitedTitles, PARAMS)
+	paths, err := getToPhilosophy("Albert Einstein", "strict", visitedTitles, PARAMS)
 
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
 	}
-	
-	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m", *paths)
+
+	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m", paths)
 }
 
 // function to recursively get to philosophy
-func getToPhilosophy(node, prevPage string, titles *[]string, params url.Values) (*[]string, error) {
+// this mode argument should ideally be a sum type
+func getToPhilosophy(node string, mode string, titles []string, params url.Values) ([]string, error) {
 
 	// our terminator case
 	if node == "Philosophy" {
@@ -76,7 +77,7 @@ func getToPhilosophy(node, prevPage string, titles *[]string, params url.Values)
 	}
 
 	// pass the pointer to the res body to the parser func to look for the valid link
-	linkAddr, err := parser(res, prevPage)
+	linkAddr, err := parser(res, mode, titles)
 
 	if err != nil {
 		return titles, err
@@ -95,19 +96,15 @@ func getToPhilosophy(node, prevPage string, titles *[]string, params url.Values)
 	}
 
 	// set prevPage to be current node (parser uses this internally)
-	prevPage = node
+	// prevPage = node
 
 	// sleep a bit, so as not to constantly bombard Wiki's server
-	*titles = append(*titles, nextNode)
+	titles = append(titles, nextNode)
 	time.Sleep(time.Millisecond * 20)
 
-	fmt.Printf("Here is our next node just before we run recursively call bro! -> %s%s(%s)%s\n", Bold, Cyan, nextNode, Reset)
-	// missing return or break statemen here causes the previous function at the top of the stack to be stuck
-	// actually, this is so retarded lolll. Damn, why do we have recursion and iteration combined when they
-	// are "serving" the same purpose?
-	getToPhilosophy(nextNode, prevPage, titles, params)
+	ts, err := getToPhilosophy(nextNode, mode, titles, params)
 
-	return titles, nil
+	return ts, err
 }
 
 func createClient() *http.Client {
