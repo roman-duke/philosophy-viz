@@ -47,7 +47,7 @@ func main() {
 
 	visitedTitles := make([]string, 0)
 
-	paths, err := getToPhilosophy("Albert Einstein", "strict", visitedTitles, PARAMS)
+	paths, err := getToPhilosophy("Albert Einstein", "relaxed", visitedTitles, PARAMS)
 
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
@@ -58,11 +58,32 @@ func main() {
 
 // function to recursively get to philosophy
 // this mode argument should ideally be a sum type
-func getToPhilosophy(node string, mode string, titles []string, params url.Values) ([]string, error) {
+
+type Link struct {
+	title           string
+	redirect        bool
+	linkAddress     string
+	// our array would have the list of all the links that were actually visited
+	// the loopBound shows that this link causes a loop
+	// the nextLinkAddress just points at the next thing in the list
+	loopBound       bool
+	nextLinkAddress string
+	// this is where a sum type would be important.
+	// This should only be present when the value of
+	// the redirect member is true, but sadly Go does
+	// not have the sum-type language feature.
+	redirectAddress string
+}
+
+// TODO: If the redirect is something that has been visited before, then go back to the previous
+// page and search for the next link that has not previously been visited.
+
+// Unexpected complexity arisen (redirect links being loop links)
+func getToPhilosophy(node string, mode string, redirectMode bool, links []Link, params url.Values) ([]Link, error) {
 
 	// our terminator case
 	if node == "Philosophy" {
-		return titles, nil
+		return links, nil
 	}
 
 	fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
@@ -73,14 +94,19 @@ func getToPhilosophy(node string, mode string, titles []string, params url.Value
 	res, err := fetch(client, BASE_URL, params)
 
 	if err != nil {
-		return titles, err
+		return links, err
 	}
 
-	// pass the pointer to the res body to the parser func to look for the valid link
-	linkAddr, err := parser(res, mode, titles)
+	// call the parse function here to help us extract the relevant link
+	linkAddr, err := parser(res, mode, false, links)
 
-	if err != nil {
-		return titles, err
+	// declare our new link variable
+	var newLink Link
+
+	if errors.Is(err, ErrLoopLink) {
+		newLink.loopBound = true
+	} else if err != nil {
+		return links, err
 	}
 
 	nextNode := strings.TrimPrefix(linkAddr, "/wiki/")
@@ -92,17 +118,34 @@ func getToPhilosophy(node string, mode string, titles []string, params url.Value
 	// that there would be any error because of what the parser does for us under the hood
 	// the error is actualy more so a "logical" error
 	if len(nextNode) == len(linkAddr) {
-		return titles, errors.New("invalid link returned by parser")
+		return links, errors.New("invalid link returned by parser")
 	}
 
-	// set prevPage to be current node (parser uses this internally)
-	// prevPage = node
+	// update the values of the newLink
+	blah := Link{
+		title: nextNode,
+		linkAddress: linkAddr,
+	}
+
+	if len(links) > 0 && !redirectMode {
+		// point the "nextLinkAddress" of the previous element to the current linkAddress of
+		// this element if it is not in redirectMode of course. This is where sum types would
+		// help a ton.
+		links[len(links)-1].nextLinkAddress = blah.linkAddress
+	}
+
+	// in redirect mode, just update the link of the previous element
+	if redirectMode {
+		links[len(links) - 1].redirectAddress = linkAddr
+	} else {
+		links = append(links, blah)
+	}
+
 
 	// sleep a bit, so as not to constantly bombard Wiki's server
-	titles = append(titles, nextNode)
 	time.Sleep(time.Millisecond * 20)
 
-	ts, err := getToPhilosophy(nextNode, mode, titles, params)
+	ts, err := getToPhilosophy(nextNode, mode, links, params)
 
 	return ts, err
 }

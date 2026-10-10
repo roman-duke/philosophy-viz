@@ -43,7 +43,7 @@ var ErrLoopLink = errors.New("link causes loop")
 
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
-func parser(arg *WikiPageRes, mode string, visited []string) (string, error) {
+func parser(arg *WikiPageRes, mode string, isRedirectParse bool, visited []string) (string, error) {
 	wikiHTMLContent := arg.Parse.Text
 
 	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
@@ -135,8 +135,13 @@ func parser(arg *WikiPageRes, mode string, visited []string) (string, error) {
 			// then we keep searching till we find one that won't cause a loop.
 			case "relaxed":
 
-				if idx != -1 {
+				if idx != -1 && !isRedirectParse {
 					continue
+					// we are only looking for the first link in the redirect response
+					// if the redirect link points at something we have visited before,
+					// then we return an application-level (logical) error.
+				} else if idx != -1 && isRedirectParse {
+					return "", ErrLoopLink
 				}
 			}
 
