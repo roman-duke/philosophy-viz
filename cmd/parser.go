@@ -41,9 +41,14 @@ const (
 // ===================================== errors ============================================//
 var ErrLoopLink = errors.New("link causes loop")
 
+type ParseRes struct {
+	linkAddr string
+	redirect bool
+}
+
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
-func parser(arg *WikiPageRes, mode string, isRedirectParse bool, visited []string) (string, error) {
+func parser(arg *WikiPageRes, mode string, visited []Link) (*ParseRes, error) {
 	wikiHTMLContent := arg.Parse.Text
 
 	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
@@ -74,7 +79,7 @@ func parser(arg *WikiPageRes, mode string, isRedirectParse bool, visited []strin
 		// pTag error handling
 		pErr := tokenErrorHandler(err)
 		if pErr != nil {
-			return "", pErr
+			return nil, pErr
 		}
 
 		// remember to switch the "targetAtom" bit so as not to scan for anchor tags in irrelevant
@@ -118,8 +123,8 @@ func parser(arg *WikiPageRes, mode string, isRedirectParse bool, visited []strin
 				continue
 			}
 
-			idx := slices.IndexFunc(visited, func(l string) bool {
-				return l == strings.TrimPrefix(validLink, "/wiki/")
+			idx := slices.IndexFunc(visited, func(l Link) bool {
+				return l.linkAddress == validLink
 			})
 
 			switch mode {
@@ -128,24 +133,19 @@ func parser(arg *WikiPageRes, mode string, isRedirectParse bool, visited []strin
 			// the call site and act accordingly
 			case "strict":
 				if idx != -1 {
-					return "", ErrLoopLink
+					return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
 				}
 
-			// if the mode is "relaxed" and we encounter a link that would cause a loop,
-			// then we keep searching till we find one that won't cause a loop.
 			case "relaxed":
-
-				if idx != -1 && !isRedirectParse {
-					continue
-					// we are only looking for the first link in the redirect response
-					// if the redirect link points at something we have visited before,
-					// then we return an application-level (logical) error.
-				} else if idx != -1 && isRedirectParse {
-					return "", ErrLoopLink
+				// we are only looking for the first link in the redirect response
+				// if the redirect link points at something we have visited before,
+				// then we return an application-level (logical) error.
+				if idx != -1 {
+					return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
 				}
 			}
 
-			return validLink, nil
+			return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, nil
 		}
 	}
 }
