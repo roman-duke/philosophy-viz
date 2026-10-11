@@ -52,18 +52,24 @@ func main() {
 	// placed here temporarily just so that the visitedTitles slice is not empty
 	visitedTitles := []Link{
 		{
-			title:       "Albert Einstein",
-			linkAddress: "/wiki/Albert_Einstein",
+			title:       "Alireza Firouzja",
+			linkAddress: "/wiki/Alireza_Firouzja",
 		},
 	}
 
-	paths, err := getToPhilosophy("Albert Einstein", "relaxed", visitedTitles, PARAMS)
+	paths, err := getToPhilosophy("Alireza Firouzja", "relaxed", visitedTitles, PARAMS)
 
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
 	}
 
-	fmt.Printf("The path to philosophy --> \033[36m%v\033[0m", paths)
+	titles := make([]string, len(paths))
+	for i, link := range paths {
+		titles[i] = link.title
+	}
+
+	fmt.Printf("The ugly path to philosophy --> \033[36m%v\033[0m\n\n\n", paths)
+	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m\n", strings.Join(titles, " → "))
 }
 
 type Link struct {
@@ -92,8 +98,8 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 
 	// declare relevant variables to help us with the tail recursion
 	var (
-		ts  []Link
-		err error
+		ts       []Link
+		err      error
 		loopMode bool
 	)
 
@@ -104,7 +110,7 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 
 	// fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
 
-	fmt.Printf("%s%sHere is our current list of titles so far:\n %v%s", Bold, Red, links, Reset)
+	fmt.Printf("%s%sHere is our current list of titles so far:\n %v%s\n", Bold, Red, links, Reset)
 
 	// update the map of url.Values with the new page key
 	params.Set("page", node)
@@ -120,7 +126,8 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 	}
 
 	// call the parse function here to help us extract the relevant link
-	parseRes, err := parser(res, links, findDuplicate)
+	dupFinder := findDuplicate(links)
+	parseRes, err := parser(res, dupFinder)
 
 	// declare our new link variable
 	var newLink Link
@@ -184,33 +191,59 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 }
 
 // ============================== HELPER FUNCTION ===================================//
-func findDuplicate(ls []Link, currLinkAddr string) bool {
+type DupKind string
+
+const (
+	DupNotInPrev DupKind = "duplicateNotInPrev"
+	DupInPrev    DupKind = "duplicateInPrev"
+	NoDup        DupKind = "noDuplicate"
+)
+
+func findDuplicate(ls []Link) func(s string) DupKind {
 	// the name is self-explanatory
 	// this helps us to know if our accumulated links slice contains the current link address
 	// using this function in the main call site would lead to our implementation having a
 	// time complexity of O(n^2 x m)-ish (we are ignoring the internal checks which happen too)
 	// anyways, the sample size for this project (the list of links is going to be pretty small)
-	idx := slices.IndexFunc(ls, func(l Link) bool {
-		// first we check the link address of the node and then we check its children
-		// (the loop links) if any exists
-		// let's use recursion (for no just justified reason, loll)
-		isEqualRoot := l.linkAddress == currLinkAddr
-		var isInnerEq bool
 
-		if len(l.loopLinks) != 0 {
-			isInnerEq = findDuplicate(l.loopLinks, currLinkAddr)
+	var helper func(s string) DupKind
+
+	// keep a copy of the main loop links
+	copyLs := ls
+
+	helper = func(currLinkAddr string) DupKind {
+		fmt.Println("Eren Jaeger!")
+		idx := slices.IndexFunc(ls, func(l Link) bool {
+			// first we check the link address of the node and then we check its children
+			// (the loop links) if any exists
+			// let's use recursion (for no just justified reason, loll)
+			isEqualRoot := l.linkAddress == currLinkAddr
+			var isInnerEq DupKind
+
+			if len(l.loopLinks) != 0 {
+				// update the links bit so that the next iteration runs on the loopLinks
+				ls = l.loopLinks
+				isInnerEq = helper(currLinkAddr)
+
+				// point the loopLinks bit back to the original copy again
+				ls = copyLs
+			} else {
+				return isEqualRoot
+			}
+
+			return isEqualRoot || (isInnerEq == DupInPrev || isInnerEq == DupNotInPrev)
+		})
+
+		if idx != -1 && idx == len(ls)-1 {
+			return DupInPrev
+		} else if idx != -1 && idx != len(ls)-1 {
+			return DupNotInPrev
 		} else {
-			return isEqualRoot
+			return NoDup
 		}
-
-		return isEqualRoot && isInnerEq
-	})
-
-	if idx != -1 {
-		return true
-	} else {
-		return false
 	}
+
+	return helper
 }
 
 func createClient() *http.Client {

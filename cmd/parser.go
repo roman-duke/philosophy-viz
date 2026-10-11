@@ -44,7 +44,7 @@ type ParseRes struct {
 
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
-func parser(arg *WikiPageRes, visited []Link, findD func(x []Link, y string) bool) (*ParseRes, error) {
+func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 	wikiHTMLContent := arg.Parse.Text
 
 	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
@@ -119,14 +119,22 @@ func parser(arg *WikiPageRes, visited []Link, findD func(x []Link, y string) boo
 				continue
 			}
 
-			containsDuplicate := findD(visited, validLink)
+			// checks if our element contains a dupicate and if the duplicate
+			// has previously been discovered
+			dup := findD(validLink)
 
-			if containsDuplicate {
+			switch dup {
+			case DupInPrev:
+				fmt.Println("Duplicate encountered again!")
+				continue
+
+			case DupNotInPrev:
 				fmt.Println("Duplicate encountered!")
 				return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
-			}
 
-			return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, nil
+			case NoDup:
+				return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, nil
+			}
 		}
 	}
 }
