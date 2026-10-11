@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -39,13 +40,22 @@ type WikiPageRes struct {
 
 var client *http.Client
 
+// ======================================== errors =========================================//
+var ErrDuplicateSearch = errors.New("error finding link duplicate")
+
 // let's make a simple fetch request to a wikipedia article to get the content and then
 // log it to console
 func main() {
 	// create the necessarsy connection pool
 	client = createClient()
 
-	visitedTitles := make([]Link, 0)
+	// placed here temporarily just so that the visitedTitles slice is not empty
+	visitedTitles := []Link{
+		{
+			title:       "Albert Einstein",
+			linkAddress: "/wiki/Albert_Einstein",
+		},
+	}
 
 	paths, err := getToPhilosophy("Albert Einstein", "relaxed", visitedTitles, PARAMS)
 
@@ -82,8 +92,9 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 
 	// declare relevant variables to help us with the tail recursion
 	var (
-		ts           []Link
-		err          error
+		ts  []Link
+		err error
+		loopMode bool
 	)
 
 	// our terminator case
@@ -91,14 +102,16 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 		return links, nil
 	}
 
-	fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
+	// fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
+
+	fmt.Printf("%s%sHere is our current list of titles so far:\n %v%s", Bold, Red, links, Reset)
 
 	// update the map of url.Values with the new page key
 	params.Set("page", node)
 
 	// ============================ SLEEP ===========================//
 	// sleep a bit, so as not to constantly bombard Wiki's server
-	time.Sleep(time.Millisecond * 20)
+	time.Sleep(time.Millisecond * 500)
 	// ==============================================================//
 	res, err := fetch(client, BASE_URL, params)
 
@@ -107,13 +120,13 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 	}
 
 	// call the parse function here to help us extract the relevant link
-	parseRes, err := parser(res, mode, links)
+	parseRes, err := parser(res, links, findDuplicate)
 
 	// declare our new link variable
 	var newLink Link
 
 	if errors.Is(err, ErrLoopLink) {
-		newLink.loopBound = true
+		loopMode = true
 	} else if err != nil {
 		return links, err
 	}
@@ -142,13 +155,22 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 
 	// if the new link causes a loop, then we pop it from our array and add
 	// it as a "child" to the previous element in the array
-	if newLink.loopBound {
+	if loopMode {
 		lastElem := links[len(links)-1]
+		lastElem.loopBound = true
+
 		links = links[:len(links)-1]
 		links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastElem)
 
 		// the call would be next node of the last "valid" link
 		n := links[len(links)-1].title
+
+		// in strict mode, we just stop the recursion immediately and return
+		// it seems kind of weird to have a base case embedded in here though?
+		if mode == "strict" {
+			return links, err
+		}
+
 		ts, err = getToPhilosophy(n, mode, links, params)
 	} else {
 		if !parseRes.redirect {
@@ -159,6 +181,36 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 	}
 
 	return ts, err
+}
+
+// ============================== HELPER FUNCTION ===================================//
+func findDuplicate(ls []Link, currLinkAddr string) bool {
+	// the name is self-explanatory
+	// this helps us to know if our accumulated links slice contains the current link address
+	// using this function in the main call site would lead to our implementation having a
+	// time complexity of O(n^2 x m)-ish (we are ignoring the internal checks which happen too)
+	// anyways, the sample size for this project (the list of links is going to be pretty small)
+	idx := slices.IndexFunc(ls, func(l Link) bool {
+		// first we check the link address of the node and then we check its children
+		// (the loop links) if any exists
+		// let's use recursion (for no just justified reason, loll)
+		isEqualRoot := l.linkAddress == currLinkAddr
+		var isInnerEq bool
+
+		if len(l.loopLinks) != 0 {
+			isInnerEq = findDuplicate(l.loopLinks, currLinkAddr)
+		} else {
+			return isEqualRoot
+		}
+
+		return isEqualRoot && isInnerEq
+	})
+
+	if idx != -1 {
+		return true
+	} else {
+		return false
+	}
 }
 
 func createClient() *http.Client {

@@ -3,10 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"slices"
-
-	// "slices"
-	// "fmt"
 	"io"
 	"log"
 	"regexp"
@@ -48,7 +44,7 @@ type ParseRes struct {
 
 // this function receives the returned decoded json as input, then parses to build a DOM tree
 // (via the HTML5 implementation) and then searches the tree to look for the "relevant" links
-func parser(arg *WikiPageRes, mode string, visited []Link) (*ParseRes, error) {
+func parser(arg *WikiPageRes, visited []Link, findD func(x []Link, y string) bool) (*ParseRes, error) {
 	wikiHTMLContent := arg.Parse.Text
 
 	tokenizer := html.NewTokenizer(strings.NewReader(wikiHTMLContent))
@@ -123,26 +119,11 @@ func parser(arg *WikiPageRes, mode string, visited []Link) (*ParseRes, error) {
 				continue
 			}
 
-			idx := slices.IndexFunc(visited, func(l Link) bool {
-				return l.linkAddress == validLink
-			})
+			containsDuplicate := findD(visited, validLink)
 
-			switch mode {
-			// if the mode is strict and we encounter a link that would cause a loop,
-			// then we just return an application logical error which we can check in
-			// the call site and act accordingly
-			case "strict":
-				if idx != -1 {
-					return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
-				}
-
-			case "relaxed":
-				// we are only looking for the first link in the redirect response
-				// if the redirect link points at something we have visited before,
-				// then we return an application-level (logical) error.
-				if idx != -1 {
-					return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
-				}
+			if containsDuplicate {
+				fmt.Println("Duplicate encountered!")
+				return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
 			}
 
 			return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, nil
