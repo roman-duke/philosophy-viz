@@ -52,12 +52,12 @@ func main() {
 	// placed here temporarily just so that the visitedTitles slice is not empty
 	visitedTitles := []Link{
 		{
-			title:       "Alireza Firouzja",
-			linkAddress: "/wiki/Alireza_Firouzja",
+			title:       "Set Theory",
+			linkAddress: "/wiki/Set_Theory",
 		},
 	}
 
-	paths, err := getToPhilosophy("Alireza Firouzja", "relaxed", visitedTitles, PARAMS)
+	paths, err := getToPhilosophy("Set Theory", "relaxed", visitedTitles, PARAMS)
 
 	if err != nil {
 		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
@@ -199,6 +199,7 @@ const (
 	NoDup        DupKind = "noDuplicate"
 )
 
+// have a look at this "unnecessary" recursive function
 func findDuplicate(ls []Link) func(s string) DupKind {
 	// the name is self-explanatory
 	// this helps us to know if our accumulated links slice contains the current link address
@@ -212,7 +213,6 @@ func findDuplicate(ls []Link) func(s string) DupKind {
 	copyLs := ls
 
 	helper = func(currLinkAddr string) DupKind {
-		fmt.Println("Eren Jaeger!")
 		idx := slices.IndexFunc(ls, func(l Link) bool {
 			// first we check the link address of the node and then we check its children
 			// (the loop links) if any exists

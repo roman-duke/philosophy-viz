@@ -145,9 +145,13 @@ func getLink(token html.Token) (string, bool) {
 	for _, attr := range token.Attr {
 		// this is where we check the validity of the link
 		// links that go back to already visited pages are also deemed "invalid"
-		if attr.Key == "href" && wikiLink.Match([]byte(attr.Val)) {
-			address = attr.Val
-			return address, true
+		if attr.Key == "href" {
+			// we trim any discovered "#"suffix in the link
+			before, _, _ := strings.Cut(attr.Val, "#")
+			if wikiLink.Match([]byte(before)) {
+				address = attr.Val
+				return address, true
+			}
 		}
 	}
 
