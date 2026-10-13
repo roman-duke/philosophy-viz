@@ -74,6 +74,14 @@ type PhiloPath struct {
 	path    []Link
 }
 
+// =================================== PLAN ========================================//
+// 1. Communication: each goroutine should communicate its visited links via a channel
+// only the main goroutine is responsible for writing to the map. incremental updates
+// should be sent over time
+// 2. Shared cache - there should be a cache for fetched content and a separate one for
+// visited links
+// 3. All goroutines have read access to the "shared memory"/"cache". This is how they
+// would check for already visited/traversed paths
 func visitPaths() {
 	// create a list of paths to traverse to "Philosophy"
 	paths := []PhiloPath{
