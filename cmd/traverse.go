@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"fmt"
+	// "fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -35,9 +35,6 @@ func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Re
 
 		if lastLink.redirect {
 			node = strings.TrimPrefix(lastLink.redirectAddress, "/wiki/")
-		} else if lastLink.loopBound {
-			newLastLink := links[len(links)-2]
-			node = strings.TrimPrefix(newLastLink.linkAddress, "/wiki")
 		}
 	}
 
@@ -105,8 +102,12 @@ func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Re
 	// if the new link causes a loop, then we pop it from our array and add
 	// it as a "child" to the previous element in the array
 	if loopMode {
-		links[len(links)-1].loopBound = true
-		fmt.Println("links that we have gathered so far!\n", links)
+		lastElem := links[len(links)-1]
+		lastElem.loopBound = true
+
+		links = links[:len(links)-1]
+		links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastElem)
+
 		c <- LoopLink{key: id}
 
 		// in strict mode, we just stop the recursion immediately and return
@@ -137,16 +138,39 @@ const (
 	NoDup        DupKind = "noDuplicate"
 )
 
-// update made to the "unnecessary" recusrive function
+// have a look at this "unnecessary" recursive function
 func findDuplicate(ls []Link) func(s string) DupKind {
 	// the name is self-explanatory
 	// this helps us to know if our accumulated links slice contains the current link address
+	// using this function in the main call site would lead to our implementation having a
+	// time complexity of O(n^2 x m)-ish (we are ignoring the internal checks which happen too)
+	// anyways, the sample size for this project (the list of links is going to be pretty small)
 
 	var helper func(s string) DupKind
 
+	// keep a copy of the main loop links
+	copyLs := ls
+
 	helper = func(currLinkAddr string) DupKind {
 		idx := slices.IndexFunc(ls, func(l Link) bool {
-			return l.linkAddress == currLinkAddr
+			// first we check the link address of the node and then we check its children
+			// (the loop links) if any exists
+			// let's use recursion (for no just justified reason, loll)
+			isEqualRoot := l.linkAddress == currLinkAddr
+			var isInnerEq DupKind
+
+			if len(l.loopLinks) != 0 {
+				// update the links bit so that the next iteration runs on the loopLinks
+				ls = l.loopLinks
+				isInnerEq = helper(currLinkAddr)
+
+				// point the loopLinks bit back to the original copy again
+				ls = copyLs
+			} else {
+				return isEqualRoot
+			}
+
+			return isEqualRoot || (isInnerEq == DupInPrev || isInnerEq == DupNotInPrev)
 		})
 
 		if idx != -1 && idx == len(ls)-1 {

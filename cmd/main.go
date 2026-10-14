@@ -63,12 +63,12 @@ func visitPaths() {
 
 	// create a map of paths to traverse to "Philosophy"
 	pMap := PathsMap{
-		// "Alireza Firouzja": {
-		// 	{
-		// 		title:       "Alireza Firouzja",
-		// 		linkAddress: "/wiki/Alireza_Firouzja",
-		// 	},
-		// },
+		"Alireza Firouzja": {
+			{
+				title:       "Alireza Firouzja",
+				linkAddress: "/wiki/Alireza_Firouzja",
+			},
+		},
 
 		"Albert Einstein": {
 			{
