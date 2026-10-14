@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,23 +27,33 @@ type Link struct {
 
 // function to recursively get to philosophy
 // this mode argument should ideally be a sum type
-func getToPhilosophy(node string, mode string, links []Link, params url.Values) ([]Link, error) {
+func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup) {
+	var node string
+	if len(links) > 0 {
+		lastLink := links[len(links)-1]
+		node = strings.TrimPrefix(lastLink.linkAddress, "/wiki/")
+
+		if lastLink.redirect {
+			node = strings.TrimPrefix(lastLink.redirectAddress, "/wiki/")
+		} else if lastLink.loopBound {
+			newLastLink := links[len(links)-2]
+			node = strings.TrimPrefix(newLastLink.linkAddress, "/wiki")
+		}
+	}
 
 	// declare relevant variables to help us with the tail recursion
 	var (
-		ts       []Link
 		err      error
 		loopMode bool
 	)
 
 	// our terminator case
 	if node == "Philosophy" {
-		return links, nil
+		// return links, nil
+		defer wg.Done()
+
+		return
 	}
-
-	// fmt.Printf("%s%sour node for this iteration: (%s)!%s\n", Bold, Red, node, Reset)
-
-	fmt.Printf("%s%sHere is our current list of titles so far:\n %v%s\n", Bold, Red, links, Reset)
 
 	// update the map of url.Values with the new page key
 	params.Set("page", node)
@@ -54,7 +65,7 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 	res, err := fetch(client, BASE_URL, params)
 
 	if err != nil {
-		return links, err
+		c <- FetchErr{err: err}
 	}
 
 	// call the parse function here to help us extract the relevant link
@@ -67,19 +78,16 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 	if errors.Is(err, ErrLoopLink) {
 		loopMode = true
 	} else if err != nil {
-		return links, err
+		c <- ParsingErr{err: err}
 	}
 
 	nextNode := strings.TrimPrefix(parseRes.linkAddr, "/wiki/")
-
-	fmt.Println("Here is our next node:", nextNode)
-	fmt.Println("length of our new node", len(nextNode))
 
 	// handle this error here just for consistency purposes, but it is currently impossible
 	// that there would be any error because of what the parser does for us under the hood
 	// the error is actualy more so a "logical" error
 	if len(nextNode) == len(parseRes.linkAddr) {
-		return links, errors.New("invalid link returned by parser")
+		c <- ParsingErr{err: errors.New("invalid link returned by parser")}
 	}
 
 	// update the values of the newLink
@@ -90,36 +98,34 @@ func getToPhilosophy(node string, mode string, links []Link, params url.Values) 
 	if parseRes.redirect {
 		links[len(links)-1].redirect = true
 		links[len(links)-1].redirectAddress = parseRes.linkAddr
+		// send the result over a channel for an encountered redirect
+		c <- RedirectLink{key: id, address: parseRes.linkAddr}
 	}
 
 	// if the new link causes a loop, then we pop it from our array and add
 	// it as a "child" to the previous element in the array
 	if loopMode {
-		lastElem := links[len(links)-1]
-		lastElem.loopBound = true
-
-		links = links[:len(links)-1]
-		links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastElem)
-
-		// the call would be next node of the last "valid" link
-		n := links[len(links)-1].title
+		links[len(links)-1].loopBound = true
+		fmt.Println("links that we have gathered so far!\n", links)
+		c <- LoopLink{key: id}
 
 		// in strict mode, we just stop the recursion immediately and return
 		// it seems kind of weird to have a base case embedded in here though?
 		if mode == "strict" {
-			return links, err
+			defer wg.Done()
+
+			return
 		}
 
-		ts, err = getToPhilosophy(n, mode, links, params)
+		getToPhilosophy(id, mode, links, params, c, wg)
 	} else {
 		if !parseRes.redirect {
 			links = append(links, newLink)
+			c <- NewLink{key: id, val: newLink}
 		}
 
-		ts, err = getToPhilosophy(nextNode, mode, links, params)
+		getToPhilosophy(id, mode, links, params, c, wg)
 	}
-
-	return ts, err
 }
 
 // ============================== HELPER FUNCTION ===================================//
@@ -131,39 +137,16 @@ const (
 	NoDup        DupKind = "noDuplicate"
 )
 
-// have a look at this "unnecessary" recursive function
+// update made to the "unnecessary" recusrive function
 func findDuplicate(ls []Link) func(s string) DupKind {
 	// the name is self-explanatory
 	// this helps us to know if our accumulated links slice contains the current link address
-	// using this function in the main call site would lead to our implementation having a
-	// time complexity of O(n^2 x m)-ish (we are ignoring the internal checks which happen too)
-	// anyways, the sample size for this project (the list of links is going to be pretty small)
 
 	var helper func(s string) DupKind
 
-	// keep a copy of the main loop links
-	copyLs := ls
-
 	helper = func(currLinkAddr string) DupKind {
 		idx := slices.IndexFunc(ls, func(l Link) bool {
-			// first we check the link address of the node and then we check its children
-			// (the loop links) if any exists
-			// let's use recursion (for no just justified reason, loll)
-			isEqualRoot := l.linkAddress == currLinkAddr
-			var isInnerEq DupKind
-
-			if len(l.loopLinks) != 0 {
-				// update the links bit so that the next iteration runs on the loopLinks
-				ls = l.loopLinks
-				isInnerEq = helper(currLinkAddr)
-
-				// point the loopLinks bit back to the original copy again
-				ls = copyLs
-			} else {
-				return isEqualRoot
-			}
-
-			return isEqualRoot || (isInnerEq == DupInPrev || isInnerEq == DupNotInPrev)
+			return l.linkAddress == currLinkAddr
 		})
 
 		if idx != -1 && idx == len(ls)-1 {

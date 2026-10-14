@@ -7,15 +7,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	// "strings"
+	"sync"
 )
 
 var BASE_URL = "https://en.wikipedia.org/w/api.php"
-var PARAMS = url.Values{
-	"action": {"parse"},
-	"format": {"json"},
-	// "page":          {"Albert Einstein"},
-	"formatversion": {"2"},
-}
 
 type LangLink struct {
 	Lang     string `json:"lang"`
@@ -34,6 +31,9 @@ type WikiPageRes struct {
 	}
 }
 
+// the type of the result to expect
+type PathsMap map[string][]Link
+
 var client *http.Client
 
 // ======================================== errors =========================================//
@@ -45,33 +45,8 @@ func main() {
 	// create the necessarsy connection pool
 	client = createClient()
 
-	// placed here temporarily just so that the visitedTitles slice is not empty
-	visitedTitles := []Link{
-		{
-			title:       "Set Theory",
-			linkAddress: "/wiki/Set_Theory",
-		},
-	}
-
-	paths, err := getToPhilosophy("Set Theory", "relaxed", visitedTitles, PARAMS)
-
-	if err != nil {
-		log.Fatalf("\033[31merror fetching content: %v\033[0m", err)
-	}
-
-	titles := make([]string, len(paths))
-	for i, link := range paths {
-		titles[i] = link.title
-	}
-
-	fmt.Printf("The ugly path to philosophy --> \033[36m%v\033[0m\n\n\n", paths)
-	fmt.Printf("The path to philosophy --> \033[36m%s\033[0m\n", strings.Join(titles, " → "))
-}
-
-type PhiloPath struct {
-	title   string
-	address string
-	path    []Link
+	// testing
+	visitPaths()
 }
 
 // =================================== PLAN ========================================//
@@ -83,20 +58,148 @@ type PhiloPath struct {
 // 3. All goroutines have read access to the "shared memory"/"cache". This is how they
 // would check for already visited/traversed paths
 func visitPaths() {
-	// create a list of paths to traverse to "Philosophy"
-	paths := []PhiloPath{
-		{
-			title:       "Albert Einstein",
-			address: "/wiki/Albert_Einstein",
-		},
-		{
-			title:       "Alireza Firouzja",
-			address: "/wiki/Alireza_Firouzja",
+	// set the default mode for now
+	mode := "relaxed"
+
+	// create a map of paths to traverse to "Philosophy"
+	pMap := PathsMap{
+		// "Alireza Firouzja": {
+		// 	{
+		// 		title:       "Alireza Firouzja",
+		// 		linkAddress: "/wiki/Alireza_Firouzja",
+		// 	},
+		// },
+
+		"Albert Einstein": {
+			{
+				title:       "Albert Einstein",
+				linkAddress: "/wiki/Albert_Einstein",
+			},
 		},
 	}
 
 	// now create a channel that we can use to collect the results of the goroutines
-	// Actually, I am not sure if we should use the CSP paradigm here or the default
-	// concurrency paradgim??
-	// c := make(chan )
+	// We shall use the CSP paradigm here to allow the separate goroutines communicate
+	// their result over time
+	c := make(chan Result)
+
+	// also create a wait group to be used for handling lifecyle/completion
+	var wg sync.WaitGroup
+
+	// spin up the necessary goroutines
+	for k, v := range pMap {
+		wg.Add(1)
+
+		var PARAMS = url.Values{
+			"action": {"parse"},
+			"format": {"json"},
+			// "page":          {"Albert Einstein"},
+			"formatversion": {"2"},
+		}
+
+		go getToPhilosophy(k, mode, v, PARAMS, c, &wg)
+	}
+
+	// anonymous goroutine that is resposible for closing the channel after all goroutines
+	// have run till completion
+	go func() {
+		wg.Wait()
+		close(c)
+
+		fmt.Println("\n=== Paths to Philosophy ===")
+		for start, path := range pMap {
+			titles := make([]string, len(path))
+			for i, link := range path {
+				titles[i] = link.title
+			}
+
+			fmt.Printf("%s%s%s (%d links)\n  %s\n",
+				Cyan, start, Reset,
+				len(path),
+				strings.Join(titles, " → "),
+			)
+		}
+	}()
+
+	for msg := range c {
+		switch result := msg.(type) {
+		case NewLink:
+			// append to the already existing key
+			pMap[result.key] = append(pMap[result.key], result.val)
+
+		case RedirectLink:
+			links, ok := pMap[result.key]
+			if !ok {
+				// TODO: unhandled error
+			}
+
+			links[len(links)-1].redirect = true
+			links[len(links)-1].redirectAddress = result.address
+
+		case LoopLink:
+			links, ok := pMap[result.key]
+			if !ok {
+				// TODO: unhandled error
+			}
+
+			lastLink := links[len(links)-1]
+			lastLink.loopBound = true
+
+			links = links[:len(links)-1]
+			links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastLink)
+
+		case ParsingErr:
+			log.Printf("\033[31m parsing error occurred in the %s goroutine: %v\033[0m\n", result.key, result.err)
+
+		case FetchErr:
+			log.Printf("\033[31m fetch error occurred in the %s goroutine: %v\033[0m\n", result.key, result.err)
+
+		default:
+			panic(fmt.Sprintf("unhandled Result variant: %T", result))
+		}
+	}
 }
+
+// a discriminated union is needed for this because there are different states that
+// our program could be in:
+// 1. the first case is "new" - this tells us that a new link has been found and should
+// be appended to the already discovered list of links
+// 2. the second case is "redirect" - this tells us that the previously existing link
+// was a redirect and hence should be updated as such
+// 3. the third case is "loop" - this tells us that the current link causes a loop
+// and hence should be popped from the list of links and put as a child of the new last
+// element in the list of links
+type Result interface {
+	isResult() // "sealed" marker
+}
+
+type NewLink struct {
+	key string
+	val Link
+}
+
+type RedirectLink struct {
+	key string
+	// val Link
+	address string
+}
+
+type LoopLink struct {
+	key string
+}
+
+type FetchErr struct {
+	key string
+	err error
+}
+
+type ParsingErr struct {
+	key string
+	err error
+}
+
+func (NewLink) isResult()      {}
+func (LoopLink) isResult()     {}
+func (RedirectLink) isResult() {}
+func (ParsingErr) isResult()   {}
+func (FetchErr) isResult()     {}
