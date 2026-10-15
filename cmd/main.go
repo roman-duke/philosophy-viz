@@ -70,12 +70,12 @@ func visitPaths() {
 			},
 		},
 
-		"Albert Einstein": {
-			{
-				title:       "Albert Einstein",
-				linkAddress: "/wiki/Albert_Einstein",
-			},
-		},
+		// "Albert Einstein": {
+		// 	{
+		// 		title:       "Albert Einstein",
+		// 		linkAddress: "/wiki/Albert_Einstein",
+		// 	},
+		// },
 	}
 
 	// now create a channel that we can use to collect the results of the goroutines
