@@ -63,7 +63,7 @@ func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 	// redirect. In the case where we got content, we switch the target atom to look for a "p" tag
 	// and then "a" afterwards. If we instead got a redirectMsg, then we just look for the redirect
 	// link
-	targetAtom, wrapperAtom := atom.Div, atom.P
+	targetAtom, wrapperAtom := atom.P, atom.P
 
 	// this tells us if we should search for anchor tags within a "p" tag or within any tag in the case
 	// of our redirect response
@@ -83,32 +83,20 @@ func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 		if tag == nil {
 			continue
 		} else if tag.DataAtom == atom.Div {
-			for _, attr := range tag.Attr {
-				// if the returned div contains the redirectmsg class, then switch to look for that link
-				// else continue the tokenization process normally.
-				if attr.Key == "class" && strings.Contains(attr.Val, "redirectMsg") {
-					fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Yellow, Reset)
-					fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Yellow, Reset)
-					redirectFlag = true
-					targetAtom = atom.A
-					fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Yellow, atom.A, Reset)
-					break
-				} else if attr.Key == "class" && strings.Contains(attr.Val, "shortdescription") {
-					targetAtom = atom.P
-					break
-				}
-			}
+			// if the returned tag is a div, then it means we have encountered a redirect. In that case,
+			// switch to look for the anchor link, else continue the tokenization process normally.
+			// else continue the tokenization process normally.
+			fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Yellow, Reset)
+			fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Yellow, Reset)
+			redirectFlag = true
+			targetAtom = atom.A
+			fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Yellow, atom.A, Reset)
 		} else if tag.DataAtom == atom.P && tag.Type == html.StartTagToken {
 			// fmt.Println("we have found the start of our paragraph token", *tag)
 			targetAtom = atom.A
-		} else if tag.DataAtom == atom.P && tag.Type == html.EndTagToken {
-			// fmt.Println("we have found the end of our paragraph token", *tag)
-			if redirectFlag {
-				fmt.Println("our redirect flag is true!")
-				targetAtom = atom.A
-			} else {
-				targetAtom = atom.P
-			}
+		} else if tag.DataAtom == atom.P && tag.Type == html.EndTagToken && !redirectFlag {
+			// switch back to look for p tags in the case that our redirect flag is false (the normal case)
+			targetAtom = atom.P
 		} else if tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
 			fmt.Printf("%s%sfound our anchor tag: (%s)!%s\n", Bold, Cyan, *tag, Reset)
 
@@ -181,26 +169,30 @@ func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, r bool, tokenizer *ht
 		if r && token.DataAtom == tAtom {
 			return &token, nil
 		} else if (token.DataAtom == tAtom || token.DataAtom == twAtom) && len(*tags) == 0 {
-			if tAtom == atom.Div {
-				// get the value of the class attribute
-				for _, attr := range token.Attr {
-					if attr.Key == "class" && (strings.Contains(attr.Val, "redirectMsg") || strings.Contains(attr.Val, "shortdescription")) {
-						return &token, nil
-					}
-				}
-
-				return nil, nil
-			}
-
 			return &token, nil
+		} else if token.DataAtom == atom.Div {
+			// if we encounter a div, check the value of the class attribute to see if we
+			// got a redirect message
+			for _, attr := range token.Attr {
+				if attr.Key == "class" && strings.Contains(attr.Val, "redirectMsg") {
+					return &token, nil
+				} else if attr.Key == "class" && strings.Contains(attr.Val, "mw-parser-output") {
+					return nil, nil
+				}
+			}
 		}
 
-		switch token.Type {
-		case html.StartTagToken:
-			*tags = append(*tags, token.Data)
-		case html.EndTagToken:
-			if len(*tags) > 0 {
-				*tags = (*tags)[:len(*tags)-1]
+		// it might be best to just have a whitelist of tags that the anchor links can
+		// be found in, but given that the currently observed case is just one (bold tags)
+		// then that is basically an overkill at the moment
+		if token.DataAtom != atom.B {
+			switch token.Type {
+			case html.StartTagToken:
+				*tags = append(*tags, token.Data)
+			case html.EndTagToken:
+				if len(*tags) > 0 {
+					*tags = (*tags)[:len(*tags)-1]
+				}
 			}
 		}
 

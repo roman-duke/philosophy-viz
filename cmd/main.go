@@ -63,31 +63,45 @@ func visitPaths() {
 
 	// create a map of paths to traverse to "Philosophy"
 	pMap := PathsMap{
-		// "Alireza Firouzja": {
-		// 	{
-		// 		title:       "Alireza Firouzja",
-		// 		linkAddress: "/wiki/Alireza_Firouzja",
-		// 	},
-		// },
+		"Alireza Firouzja": {
+			{
+				title:       "Alireza Firouzja",
+				linkAddress: "/wiki/Alireza_Firouzja",
+			},
+		},
 
-		// "Albert Einstein": {
-		// 	{
-		// 		title:       "Albert Einstein",
-		// 		linkAddress: "/wiki/Albert_Einstein",
-		// 	},
-		// },
+		"Albert Einstein": {
+			{
+				title:       "Albert Einstein",
+				linkAddress: "/wiki/Albert_Einstein",
+			},
+		},
 
-		// "Paul Dirac": {
-		// 	{
-		// 		title:       "Paul Dirac",
-		// 		linkAddress: "/wiki/Paul_Dirac",
-		// 	},
-		// },
+		"Paul Dirac": {
+			{
+				title:       "Paul Dirac",
+				linkAddress: "/wiki/Paul_Dirac",
+			},
+		},
 
 		"Michelangelo": {
 			{
 				title:       "Michelangelo",
 				linkAddress: "/wiki/Michelangelo",
+			},
+		},
+
+		"Kylian Mbappé": {
+			{
+				title:       "Kylian Mbappé",
+				linkAddress: "/wiki/Kylian_Mbappé",
+			},
+		},
+
+		"Burna Boy": {
+			{
+				title:       "Burna Boy",
+				linkAddress: "/wiki/Burna_Boy",
 			},
 		},
 	}
