@@ -63,12 +63,12 @@ func visitPaths() {
 
 	// create a map of paths to traverse to "Philosophy"
 	pMap := PathsMap{
-		"Alireza Firouzja": {
-			{
-				title:       "Alireza Firouzja",
-				linkAddress: "/wiki/Alireza_Firouzja",
-			},
-		},
+		// "Alireza Firouzja": {
+		// 	{
+		// 		title:       "Alireza Firouzja",
+		// 		linkAddress: "/wiki/Alireza_Firouzja",
+		// 	},
+		// },
 
 		// "Albert Einstein": {
 		// 	{
@@ -76,6 +76,20 @@ func visitPaths() {
 		// 		linkAddress: "/wiki/Albert_Einstein",
 		// 	},
 		// },
+
+		// "Paul Dirac": {
+		// 	{
+		// 		title:       "Paul Dirac",
+		// 		linkAddress: "/wiki/Paul_Dirac",
+		// 	},
+		// },
+
+		"Michelangelo": {
+			{
+				title:       "Michelangelo",
+				linkAddress: "/wiki/Michelangelo",
+			},
+		},
 	}
 
 	// now create a channel that we can use to collect the results of the goroutines
@@ -105,20 +119,6 @@ func visitPaths() {
 	go func() {
 		wg.Wait()
 		close(c)
-
-		fmt.Println("\n=== Paths to Philosophy ===")
-		for start, path := range pMap {
-			titles := make([]string, len(path))
-			for i, link := range path {
-				titles[i] = link.title
-			}
-
-			fmt.Printf("%s%s%s (%d links)\n  %s\n",
-				Cyan, start, Reset,
-				len(path),
-				strings.Join(titles, " → "),
-			)
-		}
 	}()
 
 	for msg := range c {
@@ -157,6 +157,20 @@ func visitPaths() {
 		default:
 			panic(fmt.Sprintf("unhandled Result variant: %T", result))
 		}
+	}
+
+	fmt.Println("\n=== Paths to Philosophy ===")
+	for start, path := range pMap {
+		titles := make([]string, len(path))
+		for i, link := range path {
+			titles[i] = link.title
+		}
+
+		fmt.Printf("%s%s%s (%d links)\n  %s\n",
+			Cyan, start, Reset,
+			len(path),
+			strings.Join(titles, " → "),
+		)
 	}
 }
 

@@ -63,6 +63,9 @@ func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Re
 
 	if err != nil {
 		c <- FetchErr{err: err}
+		defer wg.Done()
+
+		return
 	}
 
 	// call the parse function here to help us extract the relevant link
@@ -76,6 +79,9 @@ func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Re
 		loopMode = true
 	} else if err != nil {
 		c <- ParsingErr{err: err}
+
+		defer wg.Done()
+		return
 	}
 
 	nextNode := strings.TrimPrefix(parseRes.linkAddr, "/wiki/")
