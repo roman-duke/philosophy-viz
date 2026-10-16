@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"errors"
@@ -27,7 +27,7 @@ type Link struct {
 
 // function to recursively get to philosophy
 // this mode argument should ideally be a sum type
-func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup) {
+func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup) {
 	var node string
 	if len(links) > 0 {
 		lastLink := links[len(links)-1]
@@ -59,7 +59,7 @@ func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Re
 	// sleep a bit, so as not to constantly bombard Wiki's server
 	time.Sleep(time.Millisecond * 500)
 	// ==============================================================//
-	res, err := fetch(client, BASE_URL, params)
+	res, err := s.fetch(BASE_URL, params)
 
 	if err != nil {
 		c <- FetchErr{err: err}
@@ -124,14 +124,14 @@ func getToPhilosophy(id, mode string, links []Link, params url.Values, c chan Re
 			return
 		}
 
-		getToPhilosophy(id, mode, links, params, c, wg)
+		s.getToPhilosophy(id, mode, links, params, c, wg)
 	} else {
 		if !parseRes.redirect {
 			links = append(links, newLink)
 			c <- NewLink{key: id, val: newLink}
 		}
 
-		getToPhilosophy(id, mode, links, params, c, wg)
+		s.getToPhilosophy(id, mode, links, params, c, wg)
 	}
 }
 

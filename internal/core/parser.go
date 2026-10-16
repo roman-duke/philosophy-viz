@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"errors"
@@ -86,11 +86,8 @@ func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 			// if the returned tag is a div, then it means we have encountered a redirect. In that case,
 			// switch to look for the anchor link, else continue the tokenization process normally.
 			// else continue the tokenization process normally.
-			fmt.Printf("%s%sredirect message encountered!%s\n", Bold, Yellow, Reset)
-			fmt.Printf("%s%snow switching the target atom to an anchor tag!%s\n", Bold, Yellow, Reset)
 			redirectFlag = true
 			targetAtom = atom.A
-			fmt.Printf("%s%sswitched --> target tag: %s%s\n", Bold, Yellow, atom.A, Reset)
 		} else if tag.DataAtom == atom.P && tag.Type == html.StartTagToken {
 			// fmt.Println("we have found the start of our paragraph token", *tag)
 			targetAtom = atom.A
@@ -98,8 +95,6 @@ func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 			// switch back to look for p tags in the case that our redirect flag is false (the normal case)
 			targetAtom = atom.P
 		} else if tag.DataAtom == atom.A && tag.Type == html.StartTagToken {
-			fmt.Printf("%s%sfound our anchor tag: (%s)!%s\n", Bold, Cyan, *tag, Reset)
-
 			validLink, ok := getLink(*tag)
 
 			if !ok {
