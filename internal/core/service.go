@@ -126,6 +126,7 @@ func (s *Service) FuzzyFindTitles(keyword string) {
 		"format": {"json"},
 	}
 
+	// TODO: Work on the generic version of this fetch function
 	_, err := s.fetch(BASE_URL, PARAMS)
 
 	if err != nil {
