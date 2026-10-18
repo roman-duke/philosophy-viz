@@ -59,7 +59,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	// sleep a bit, so as not to constantly bombard Wiki's server
 	time.Sleep(time.Millisecond * 500)
 	// ==============================================================//
-	res, err := s.fetch(BASE_URL, params)
+	res, err := fetch[WikiPageRes](s.client, BASE_URL, params)
 
 	if err != nil {
 		c <- FetchErr{err: err}

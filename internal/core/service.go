@@ -116,24 +116,23 @@ func (s *Service) VisitPaths(pMap PathsMap, mode TraverseMode) {
 }
 
 // method to fuzzy find Wikipedia titles
-func (s *Service) FuzzyFindTitles(keyword string) {
+func (s *Service) FuzzyFindTitles(keyword string) (WikiQueryRes, error) {
 	var PARAMS = url.Values{
 		"action": {"query"},
-		"list": {"search"},
+		"list":   {"search"},
 		// we specify the edit distance to be of length 2
 		"srsearch": {fmt.Sprintf("intitle:%s~2", keyword)},
-		"utf": {"8"},
-		"format": {"json"},
+		"utf8":     {"1"},
+		"format":   {"json"},
 	}
 
-	// TODO: Work on the generic version of this fetch function
-	_, err := s.fetch(BASE_URL, PARAMS)
+	res, err := fetch[WikiQueryRes](s.client, BASE_URL, PARAMS)
 
 	if err != nil {
-		// TODO: handle the fetch error for the list of titles
+		return *res, err
 	}
 
-	// now do something with the response for the list of articles returned.
+	return *res, nil
 }
 
 // a discriminated union is needed for this because there are different states that
