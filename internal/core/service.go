@@ -129,7 +129,7 @@ func (s *Service) FuzzyFindTitles(keyword string) (WikiQueryRes, error) {
 	res, err := fetch[WikiQueryRes](s.client, BASE_URL, PARAMS)
 
 	if err != nil {
-		return *res, err
+		return WikiQueryRes{}, err
 	}
 
 	return *res, nil

@@ -40,7 +40,7 @@ type SearchSchema struct {
 type WikiQueryRes struct {
 	Query struct {
 		SearchArr []SearchSchema `json:"search"`
-	}
+	} `json:"query"`
 }
 
 // the type of the result to expect

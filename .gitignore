@@ -1,2 +1,12 @@
-*.html
-*.json
+# dependencies & build output
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+
+# npm/debug logs
+npm-debug.log*
+
+# local scratch / experiments (moved out of the repo root)
+test_sandbox/
