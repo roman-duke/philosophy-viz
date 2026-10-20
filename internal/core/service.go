@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -47,72 +48,94 @@ func NewService(st *Store) *Service {
 	return &Service{client: c, store: st}
 }
 
-func (s *Service) VisitPaths(pMap PathsMap, mode TraverseMode) {
-	// now create a channel that we can use to collect the results of the goroutines
-	// We shall use the CSP paradigm here to allow the separate goroutines communicate
-	// their result over time
-	c := make(chan Result)
-
-	// also create a wait group to be used for handling lifecyle/completion
-	var wg sync.WaitGroup
-
-	// spin up the necessary goroutines
-	for k, v := range pMap {
-		wg.Add(1)
-
-		var PARAMS = url.Values{
-			"action":        {"parse"},
-			"format":        {"json"},
-			"formatversion": {"2"},
-		}
-
-		go s.getToPhilosophy(k, mode, v, PARAMS, c, &wg)
+// TOOD: thread the context to the fetch function to enable us cancel any in-flight request made to
+// wikipedia
+func (s *Service) VisitPaths(ctx context.Context, titles []string, mode TraverseMode) <-chan any {
+	// we basically construct the map of the initial paths based off the supplied articles
+	pMap := make(PathsMap)
+	for _, val := range titles {
+		pMap[val] = []Link{{title: val}}
 	}
 
-	// anonymous goroutine that is resposible for closing the channel after all goroutines
-	// have run till completion
+	out := make(chan any)
+
 	go func() {
-		wg.Wait()
-		close(c)
+		defer close(out)
+
+		// now create a channel that we can use to collect the results of the goroutines
+		// We shall use the CSP paradigm here to allow the separate goroutines communicate
+		// their result over time
+		c := make(chan Result)
+
+		// also create a wait group to be used for handling lifecyle/completion
+		var wg sync.WaitGroup
+
+		// spin up the necessary goroutines
+		for k, v := range pMap {
+			wg.Add(1)
+
+			var PARAMS = url.Values{
+				"action":        {"parse"},
+				"format":        {"json"},
+				"formatversion": {"2"},
+			}
+
+			go s.getToPhilosophy(k, mode, v, PARAMS, c, &wg)
+		}
+
+		// anonymous goroutine that is resposible for closing the channel after all goroutines
+		// have run till completion
+		go func() {
+			wg.Wait()
+			close(c)
+		}()
+
+		for msg := range c {
+			switch result := msg.(type) {
+			case NewLink:
+				// append to the already existing key
+				pMap[result.key] = append(pMap[result.key], result.val)
+
+			case RedirectLink:
+				links, ok := pMap[result.key]
+				if !ok {
+					// TODO: unhandled error
+				}
+
+				links[len(links)-1].redirect = true
+				links[len(links)-1].redirectAddress = result.address
+
+			case LoopLink:
+				links, ok := pMap[result.key]
+				if !ok {
+					// TODO: unhandled error
+				}
+
+				lastLink := links[len(links)-1]
+				lastLink.loopBound = true
+
+				links = links[:len(links)-1]
+				links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastLink)
+
+			case ParsingErr:
+				log.Printf("\033[31m parsing error occurred in the %s goroutine: %v\033[0m\n", result.key, result.err)
+
+			case FetchErr:
+				log.Printf("\033[31m fetch error occurred in the %s goroutine: %v\033[0m\n", result.key, result.err)
+
+			default:
+				panic(fmt.Sprintf("unhandled Result variant: %T", result))
+			}
+
+			select {
+			case out <- c:
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
-	for msg := range c {
-		switch result := msg.(type) {
-		case NewLink:
-			// append to the already existing key
-			pMap[result.key] = append(pMap[result.key], result.val)
-
-		case RedirectLink:
-			links, ok := pMap[result.key]
-			if !ok {
-				// TODO: unhandled error
-			}
-
-			links[len(links)-1].redirect = true
-			links[len(links)-1].redirectAddress = result.address
-
-		case LoopLink:
-			links, ok := pMap[result.key]
-			if !ok {
-				// TODO: unhandled error
-			}
-
-			lastLink := links[len(links)-1]
-			lastLink.loopBound = true
-
-			links = links[:len(links)-1]
-			links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastLink)
-
-		case ParsingErr:
-			log.Printf("\033[31m parsing error occurred in the %s goroutine: %v\033[0m\n", result.key, result.err)
-
-		case FetchErr:
-			log.Printf("\033[31m fetch error occurred in the %s goroutine: %v\033[0m\n", result.key, result.err)
-
-		default:
-			panic(fmt.Sprintf("unhandled Result variant: %T", result))
-		}
-	}
+	return out
 }
 
 // method to fuzzy find Wikipedia titles
