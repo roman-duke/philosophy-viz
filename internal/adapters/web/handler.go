@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -17,6 +18,7 @@ type Handler struct {
 var (
 	ErrMalFormedQueryParams = errors.New("keyword key in query is missing")
 	ErrWikiQuery            = errors.New("could not get search result from wikipedia")
+	ErrBadRequest           = errors.New("request body is invalid")
 )
 
 type HTTPError struct {
@@ -56,8 +58,40 @@ func (h *Handler) getTitles(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// func (h *Handler) getPaths(w http.ResponseWriter, r *http.Request) {
-// }
+// handler to trigger the Wikipedia crawl to get the paths to philosophy
+func (h *Handler) getPaths(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	rc := http.NewResponseController(w)
+	ctx := r.Context()
+
+	// parse the request body
+	var payload CrawlRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return ErrBadRequest
+	}
+
+	// TODO: update the return type of this channel to be something that's easy
+	// for the client to parse (should be of type "Result")
+	conduit := h.svc.VisitPaths(ctx, payload.Articles, payload.Mode)
+
+	for {
+		select {
+		case v, ok := <-conduit:
+			if !ok {
+				fmt.Fprintf(w, "event: done\ndata: {}\n\n")
+				rc.Flush()
+				return nil
+			}
+
+			fmt.Fprintf(w, "data: %d\n\n", v)
+			rc.Flush()
+
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
 
 // ======================================== ERROR HANDLER ========================================//
 type AdapterHandler func(http.ResponseWriter, *http.Request) error
