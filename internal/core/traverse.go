@@ -63,7 +63,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	res, err := fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
 
 	if err != nil {
-		c <- FetchErr{err: err}
+		c <- FetchErr{key: id, err: err}
 		defer wg.Done()
 
 		return
@@ -79,7 +79,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	if errors.Is(err, ErrLoopLink) {
 		loopMode = true
 	} else if err != nil {
-		c <- ParsingErr{err: err}
+		c <- ParsingErr{key: id, err: err}
 
 		defer wg.Done()
 		return

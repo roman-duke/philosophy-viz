@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -54,7 +55,7 @@ func (s *Service) VisitPaths(ctx context.Context, titles []string, mode Traverse
 	// we basically construct the map of the initial paths based off the supplied articles
 	pMap := make(PathsMap)
 	for _, val := range titles {
-		pMap[val] = []Link{{title: val}}
+		pMap[val] = []Link{{title: val, linkAddress: fmt.Sprintf("/wiki/%s", val)}}
 	}
 
 	out := make(chan StreamMessage)
@@ -165,25 +166,38 @@ const (
 	Node     EventType = "node"
 	Redirect EventType = "redirect"
 	Loop     EventType = "loop"
+	Err      EventType = "error"
 )
 
 type StreamMessage struct {
 	EventType EventType
-	Data  Result
+	Data      []byte
 }
 
 func streamMessageMapper(v Result) StreamMessage {
-	switch v.(type) {
+	switch x := v.(type) {
 	case NewLink:
-		return StreamMessage{EventType: "node", Data: v}
+		jsonData, _ := json.Marshal(nodeDTO{Key: x.key, Value: linkDTO{Title: x.val.title, LinkAddress: x.val.linkAddress, Redirect: x.val.redirect, RedirectAddress: x.val.redirectAddress, LoopBound: x.val.loopBound}})
+		return StreamMessage{EventType: Node, Data: jsonData}
+
 	case RedirectLink:
-		return StreamMessage{EventType: "redirect", Data: v}
+		jsonData, _ := json.Marshal(redirectDTO{Key: x.key, Address: x.address})
+		return StreamMessage{EventType: Redirect, Data: jsonData}
+
 	case LoopLink:
-		return StreamMessage{EventType: "loop", Data: v}
-	case ParsingErr, FetchErr:
-		return StreamMessage{EventType: "error", Data: v}
+		jsonData, _ := json.Marshal(cycleDTO{Key: x.key})
+		return StreamMessage{EventType: Loop, Data: jsonData}
+
+	case ParsingErr:
+		jsonData, _ := json.Marshal(errDTO{Key: x.key, Message: x.err.Error()})
+		return StreamMessage{EventType: Err, Data: jsonData}
+
+	case FetchErr:
+		jsonData, _ := json.Marshal(errDTO{Key: x.key, Message: x.err.Error()})
+		return StreamMessage{EventType: Err, Data: jsonData}
+
 	default:
-		return StreamMessage{EventType: "node", Data: v}
+		panic(fmt.Sprintf("unhandled Result variant: %T", v))
 	}
 }
 
@@ -230,3 +244,31 @@ func (LoopLink) isResult()     {}
 func (RedirectLink) isResult() {}
 func (ParsingErr) isResult()   {}
 func (FetchErr) isResult()     {}
+
+// ============================== RELEVANT DTO's =====================================//
+type linkDTO struct {
+	Title           string    `json:"title"`
+	LinkAddress     string    `json:"linkAddress"`
+	Redirect        bool      `json:"redirect"`
+	RedirectAddress string    `json:"redirectAddress"`
+	LoopBound       bool      `json:"loopBound"`
+}
+
+type nodeDTO struct {
+	Key   string  `json:"key"`
+	Value linkDTO `json:"link"`
+}
+
+type cycleDTO struct {
+	Key string `json:"key"`
+}
+
+type redirectDTO struct {
+	Key     string `json:"key"`
+	Address string `json:"address"`
+}
+
+type errDTO struct {
+	Key     string `json:"key"`
+	Message string `json:"message"`
+}

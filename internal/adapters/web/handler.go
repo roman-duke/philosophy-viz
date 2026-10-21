@@ -84,7 +84,7 @@ func (h *Handler) getPaths(w http.ResponseWriter, r *http.Request) error {
 				return nil
 			}
 
-			fmt.Fprintf(w, "event: %v\ndata: %v\n\n", v.EventType, v.Data)
+			fmt.Fprintf(w, "event: %v\ndata: %s\n\n", v.EventType, v.Data)
 			rc.Flush()
 
 		case <-ctx.Done():
