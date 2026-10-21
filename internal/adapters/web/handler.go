@@ -46,7 +46,7 @@ func (h *Handler) getTitles(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// now, we call the service with this keyword
-	result, err := h.svc.FuzzyFindTitles(key)
+	result, err := h.svc.FuzzyFindTitles(r.Context(), key)
 
 	if err != nil {
 		return ErrWikiQuery
@@ -84,7 +84,7 @@ func (h *Handler) getPaths(w http.ResponseWriter, r *http.Request) error {
 				return nil
 			}
 
-			fmt.Fprintf(w, "data: %d\n\n", v)
+			fmt.Fprintf(w, "event: %v\ndata: %v\n\n", v.EventType, v.Data)
 			rc.Flush()
 
 		case <-ctx.Done():

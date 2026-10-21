@@ -50,14 +50,14 @@ func NewService(st *Store) *Service {
 
 // TOOD: thread the context to the fetch function to enable us cancel any in-flight request made to
 // wikipedia
-func (s *Service) VisitPaths(ctx context.Context, titles []string, mode TraverseMode) <-chan any {
+func (s *Service) VisitPaths(ctx context.Context, titles []string, mode TraverseMode) <-chan StreamMessage {
 	// we basically construct the map of the initial paths based off the supplied articles
 	pMap := make(PathsMap)
 	for _, val := range titles {
 		pMap[val] = []Link{{title: val}}
 	}
 
-	out := make(chan any)
+	out := make(chan StreamMessage)
 
 	go func() {
 		defer close(out)
@@ -80,7 +80,7 @@ func (s *Service) VisitPaths(ctx context.Context, titles []string, mode Traverse
 				"formatversion": {"2"},
 			}
 
-			go s.getToPhilosophy(k, mode, v, PARAMS, c, &wg)
+			go s.getToPhilosophy(k, mode, v, PARAMS, c, &wg, ctx)
 		}
 
 		// anonymous goroutine that is resposible for closing the channel after all goroutines
@@ -128,7 +128,7 @@ func (s *Service) VisitPaths(ctx context.Context, titles []string, mode Traverse
 			}
 
 			select {
-			case out <- c:
+			case out <- streamMessageMapper(msg):
 			case <-ctx.Done():
 				return
 			}
@@ -139,7 +139,7 @@ func (s *Service) VisitPaths(ctx context.Context, titles []string, mode Traverse
 }
 
 // method to fuzzy find Wikipedia titles
-func (s *Service) FuzzyFindTitles(keyword string) (WikiQueryRes, error) {
+func (s *Service) FuzzyFindTitles(c context.Context, keyword string) (WikiQueryRes, error) {
 	var PARAMS = url.Values{
 		"action": {"query"},
 		"list":   {"search"},
@@ -149,13 +149,42 @@ func (s *Service) FuzzyFindTitles(keyword string) (WikiQueryRes, error) {
 		"format":   {"json"},
 	}
 
-	res, err := fetch[WikiQueryRes](s.client, BASE_URL, PARAMS)
+	res, err := fetch[WikiQueryRes](c, s.client, BASE_URL, PARAMS)
 
 	if err != nil {
 		return WikiQueryRes{}, err
 	}
 
 	return *res, nil
+}
+
+// helper function to map the result to a client-friendly message
+type EventType string
+
+const (
+	Node     EventType = "node"
+	Redirect EventType = "redirect"
+	Loop     EventType = "loop"
+)
+
+type StreamMessage struct {
+	EventType EventType
+	Data  Result
+}
+
+func streamMessageMapper(v Result) StreamMessage {
+	switch v.(type) {
+	case NewLink:
+		return StreamMessage{EventType: "node", Data: v}
+	case RedirectLink:
+		return StreamMessage{EventType: "redirect", Data: v}
+	case LoopLink:
+		return StreamMessage{EventType: "loop", Data: v}
+	case ParsingErr, FetchErr:
+		return StreamMessage{EventType: "error", Data: v}
+	default:
+		return StreamMessage{EventType: "node", Data: v}
+	}
 }
 
 // a discriminated union is needed for this because there are different states that

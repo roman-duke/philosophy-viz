@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	// "fmt"
 	"net/url"
@@ -27,7 +28,7 @@ type Link struct {
 
 // function to recursively get to philosophy
 // this mode argument should ideally be a sum type
-func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup) {
+func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup, ctx context.Context) {
 	var node string
 	if len(links) > 0 {
 		lastLink := links[len(links)-1]
@@ -59,7 +60,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	// sleep a bit, so as not to constantly bombard Wiki's server
 	time.Sleep(time.Millisecond * 500)
 	// ==============================================================//
-	res, err := fetch[WikiPageRes](s.client, BASE_URL, params)
+	res, err := fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
 
 	if err != nil {
 		c <- FetchErr{err: err}
@@ -102,7 +103,13 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 		links[len(links)-1].redirect = true
 		links[len(links)-1].redirectAddress = parseRes.linkAddr
 		// send the result over a channel for an encountered redirect
-		c <- RedirectLink{key: id, address: parseRes.linkAddr}
+		select {
+		case c <- RedirectLink{key: id, address: parseRes.linkAddr}:
+		case <-ctx.Done():
+			defer wg.Done()
+			return
+		}
+		// c <- RedirectLink{key: id, address: parseRes.linkAddr}
 	}
 
 	// if the new link causes a loop, then we pop it from our array and add
@@ -114,7 +121,12 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 		links = links[:len(links)-1]
 		links[len(links)-1].loopLinks = append(links[len(links)-1].loopLinks, lastElem)
 
-		c <- LoopLink{key: id}
+		select {
+		case c <- LoopLink{key: id}:
+		case <-ctx.Done():
+			defer wg.Done()
+			return
+		}
 
 		// in strict mode, we just stop the recursion immediately and return
 		// it seems kind of weird to have a base case embedded in here though?
@@ -124,14 +136,19 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 			return
 		}
 
-		s.getToPhilosophy(id, mode, links, params, c, wg)
+		s.getToPhilosophy(id, mode, links, params, c, wg, ctx)
 	} else {
 		if !parseRes.redirect {
 			links = append(links, newLink)
-			c <- NewLink{key: id, val: newLink}
+			select {
+			case c <- NewLink{key: id, val: newLink}:
+			case <-ctx.Done():
+				defer wg.Done()
+				return
+			}
 		}
 
-		s.getToPhilosophy(id, mode, links, params, c, wg)
+		s.getToPhilosophy(id, mode, links, params, c, wg, ctx)
 	}
 }
 

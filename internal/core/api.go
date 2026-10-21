@@ -53,8 +53,8 @@ func createClient() *http.Client {
 // given that this does something that is stateful, we have to pass a context to it
 // so that we can cancel on cleanup or something. I think that is the idiomatic way of
 // doing it in Go??
-func fetch[T any](c *http.Client, urlString string, params url.Values) (*T, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlString, nil)
+func fetch[T any](ctx context.Context, c *http.Client, urlString string, params url.Values) (*T, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlString, nil)
 
 	if err != nil {
 		return nil, err
