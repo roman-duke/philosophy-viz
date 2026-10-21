@@ -1,36 +1,173 @@
-import { useState } from 'react'
-import type { Article } from './types'
+import { useRef, useState } from 'react'
+import type {
+  Article,
+  ChainInfo,
+  CrawlMode,
+  GraphLinkLite,
+  GraphNodeLite,
+  NodeKind,
+  WireLink,
+} from './types'
+import { startCrawl } from './crawl'
 import { SearchPanel } from './components/SearchPanel'
 import { Sidebar } from './components/Sidebar'
 import { GraphCanvas } from './components/GraphCanvas'
 
 const MAX = 30
+const display = (s: string) => (s ?? '').replace(/_/g, ' ')
 
 export default function App() {
   const [selected, setSelected] = useState<Article[]>([])
+  const [mode, setMode] = useState<CrawlMode>('relaxed')
   const [crawled, setCrawled] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  function addArticle(a: Article) {
-    setSelected((prev) => {
-      if (prev.length >= MAX || prev.some((p) => p.pageid === a.pageid)) return prev
-      return [...prev, a]
-    })
-  }
+  const [nodes, setNodes] = useState<GraphNodeLite[]>([])
+  const [links, setLinks] = useState<GraphLinkLite[]>([])
+  const [chains, setChains] = useState<Record<string, ChainInfo>>({})
+  const [streaming, setStreaming] = useState(false)
+  const [streamError, setStreamError] = useState<string | null>(null)
 
+  // authoritative crawl bookkeeping (refs so loop reparenting isn't a setState side-effect)
+  const abortRef = useRef<AbortController | null>(null)
+  const tailRef = useRef<Record<string, string>>({}) // current main-path tail per seed
+  const pathRef = useRef<Record<string, string[]>>({}) // main path per seed
+
+  function addArticle(a: Article) {
+    setSelected((prev) =>
+      prev.length >= MAX || prev.some((p) => p.pageid === a.pageid) ? prev : [...prev, a],
+    )
+  }
   function removeArticle(pageid: number) {
     setSelected((prev) => prev.filter((p) => p.pageid !== pageid))
   }
 
+  // NewLink: extend the chain's main path; draw edge tail → new node.
+  function addHop(key: string, value: WireLink) {
+    const title = value?.title
+    if (!key || !title) return // ignore malformed node frames
+    const prev = tailRef.current[key]
+    tailRef.current[key] = title
+    pathRef.current[key] = [...(pathRef.current[key] ?? [key]), title]
+    const path = pathRef.current[key]
+
+    const kind: NodeKind = title === 'Philosophy' ? 'philosophy' : 'link'
+    setNodes((ns) => {
+      const found = ns.find((n) => n.id === title)
+      if (found) {
+        return kind === 'philosophy' && found.kind !== 'philosophy'
+          ? ns.map((n) => (n.id === title ? { ...n, kind } : n))
+          : ns
+      }
+      return [
+        ...ns,
+        {
+          id: title,
+          label: display(title),
+          kind,
+          linkAddress: value.linkAddress,
+          redirect: value.redirect,
+          redirectAddress: value.redirectAddress,
+          loopBound: value.loopBound,
+        },
+      ]
+    })
+    if (prev) {
+      setLinks((ls) =>
+        ls.some((l) => l.source === prev && l.target === title)
+          ? ls
+          : [...ls, { source: prev, target: title }],
+      )
+    }
+    setChains((cs) =>
+      cs[key]
+        ? { ...cs, [key]: { ...cs[key], path: [...path], done: title === 'Philosophy' || cs[key].done } }
+        : cs,
+    )
+  }
+
+  // Redirect: no new node — just annotate the current tail node.
+  function markRedirect(key: string, address: string) {
+    if (!key || !address) return
+    const tail = tailRef.current[key]
+    if (!tail) return
+    setNodes((ns) =>
+      ns.map((n) => (n.id === tail ? { ...n, redirect: true, redirectAddress: address } : n)),
+    )
+  }
+
+  // Loop: the tail is a dead-end branch of its parent. Prune it from the main
+  // path and reparent the tail so subsequent hops continue from the parent.
+  function markLoop(key: string) {
+    if (!key) return
+    const loopNode = tailRef.current[key]
+    const path = pathRef.current[key] ?? [key]
+    const parent = path.length >= 2 ? path[path.length - 2] : path[0]
+    tailRef.current[key] = parent
+    const newPath = path.length >= 2 ? path.slice(0, -1) : path
+    pathRef.current[key] = newPath
+
+    if (loopNode) {
+      setNodes((ns) =>
+        ns.map((n) => (n.id === loopNode ? { ...n, kind: 'loop', loopBound: true } : n)),
+      )
+    }
+    setChains((cs) =>
+      cs[key]
+        ? {
+            ...cs,
+            [key]: {
+              ...cs[key],
+              path: newPath,
+              looped: true,
+              loops: loopNode ? [...(cs[key].loops ?? []), loopNode] : cs[key].loops,
+            },
+          }
+        : cs,
+    )
+  }
+
+  function markError(key: string, message: string) {
+    setChains((cs) => (cs[key] ? { ...cs, [key]: { ...cs[key], error: message } } : cs))
+  }
+
   function findPaths() {
     if (selected.length === 0) return
-    // Stub: the crawl endpoint (SSE) doesn't exist yet. For now this transitions
-    // to the post-crawl layout (search hides) and slides the sidebar in.
+    abortRef.current?.abort()
+
+    const seeds = selected.map((a) => a.title)
+    tailRef.current = Object.fromEntries(seeds.map((s) => [s, s]))
+    pathRef.current = Object.fromEntries(seeds.map((s) => [s, [s]]))
+    setNodes(seeds.map((s) => ({ id: s, label: display(s), kind: 'seed' as const })))
+    setLinks([])
+    setChains(Object.fromEntries(seeds.map((s) => [s, { path: [s], done: false, looped: false }])))
+    setStreamError(null)
+    setStreaming(true)
     setCrawled(true)
     setSidebarOpen(true)
+
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    startCrawl(
+      { mode, articles: seeds },
+      {
+        onNode: addHop,
+        onRedirect: markRedirect,
+        onLoop: markLoop,
+        onError: markError,
+        onDone: () => setStreaming(false),
+      },
+      ctrl.signal,
+    ).catch((err) => {
+      if (ctrl.signal.aborted) return
+      setStreaming(false)
+      setStreamError(err instanceof Error ? err.message : String(err))
+    })
   }
 
   function backToSearch() {
+    abortRef.current?.abort()
+    setStreaming(false)
     setCrawled(false)
     setSidebarOpen(false)
   }
@@ -40,7 +177,6 @@ export default function App() {
       <div className="relative mx-auto flex h-full max-w-350 gap-3 md:gap-4">
         {sidebarOpen && (
           <>
-            {/* mobile-only scrim behind the drawer */}
             <div
               onClick={() => setSidebarOpen(false)}
               className="fixed inset-0 z-30 bg-ink/30 md:hidden"
@@ -48,6 +184,7 @@ export default function App() {
             />
             <Sidebar
               selected={selected}
+              chains={chains}
               onRemove={removeArticle}
               crawled={crawled}
               max={MAX}
@@ -65,12 +202,19 @@ export default function App() {
               onRemove={removeArticle}
               onFindPaths={findPaths}
               max={MAX}
+              mode={mode}
+              onModeChange={setMode}
             />
           )}
           <GraphCanvas
             crawled={crawled}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            nodes={nodes}
+            links={links}
+            chains={chains}
+            streaming={streaming}
+            streamError={streamError}
           />
         </div>
       </div>

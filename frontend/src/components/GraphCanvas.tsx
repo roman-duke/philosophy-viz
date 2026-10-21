@@ -1,13 +1,21 @@
 import { useMemo } from 'react'
 import { panel } from '../ui'
 import { SidebarToggle } from './SidebarToggle'
+import { ForceGraph } from './ForceGraph'
+import type { ChainInfo, GraphLinkLite, GraphNodeLite } from '../types'
 
 type Props = {
   crawled: boolean
   sidebarOpen: boolean
   onToggleSidebar: () => void
+  nodes: GraphNodeLite[]
+  links: GraphLinkLite[]
+  chains: Record<string, ChainInfo>
+  streaming: boolean
+  streamError: string | null
 }
 
+// ---- empty-state heat graph (static, decorative) ----
 type GNode = { id: number; x: number; y: number; layer: number; r: number }
 type GLink = { a: number; b: number }
 
@@ -15,13 +23,10 @@ const VIEW_W = 640
 const VIEW_H = 460
 const CX = VIEW_W / 2
 const CY = VIEW_H / 2
-
-// Heat ramp by distance from Philosophy: hot (red) at the core, cooling outward.
-const LAYER_COLOR = ['#ff5a3c', '#ff4133', '#f0863f', '#6d8bad'] // 0=core … 3=rim
+const LAYER_COLOR = ['#ff5a3c', '#ff4133', '#f0863f', '#6d8bad']
 const LAYER_R = [12, 7, 5.5, 4.5]
 const RING_RADIUS = [0, 78, 140, 200]
 
-// Deterministic PRNG so the layout is stable across renders (no jitter on re-render).
 function mulberry32(seed: number) {
   return function () {
     seed |= 0
@@ -32,15 +37,11 @@ function mulberry32(seed: number) {
   }
 }
 
-// A convergence tree: rim → mid → inner → Philosophy, laid out in branching
-// clusters so it reads like an Obsidian graph rather than a clean starburst.
-function buildGraph(): { nodes: GNode[]; links: GLink[] } {
+function buildEmptyGraph(): { nodes: GNode[]; links: GLink[] } {
   const rnd = mulberry32(42)
   const jitter = (amt: number) => (rnd() - 0.5) * 2 * amt
-
   const nodes: GNode[] = []
   const links: GLink[] = []
-
   const push = (x: number, y: number, layer: number) => {
     const id = nodes.length
     nodes.push({ id, x, y, layer, r: LAYER_R[layer] })
@@ -50,20 +51,16 @@ function buildGraph(): { nodes: GNode[]; links: GLink[] } {
     push(CX + Math.cos(angle) * radius, CY + Math.sin(angle) * radius, layer)
 
   const center = push(CX, CY, 0)
-
   const innerCount = 5
   for (let i = 0; i < innerCount; i++) {
     const a1 = (i / innerCount) * Math.PI * 2 + jitter(0.25)
     const inner = place(a1, RING_RADIUS[1] + jitter(10), 1)
     links.push({ a: center, b: inner })
-
-    const midCount = 2
-    for (let j = 0; j < midCount; j++) {
-      const a2 = a1 + (j - (midCount - 1) / 2) * 0.42 + jitter(0.12)
+    for (let j = 0; j < 2; j++) {
+      const a2 = a1 + (j - 0.5) * 0.42 + jitter(0.12)
       const mid = place(a2, RING_RADIUS[2] + jitter(12), 2)
       links.push({ a: inner, b: mid })
-
-      const outerCount = 1 + Math.round(rnd()) // 1 or 2 leaves per mid node
+      const outerCount = 1 + Math.round(rnd())
       for (let k = 0; k < outerCount; k++) {
         const a3 = a2 + (outerCount === 1 ? jitter(0.18) : (k - 0.5) * 0.3 + jitter(0.1))
         const outer = place(a3, RING_RADIUS[3] + jitter(14), 3)
@@ -71,14 +68,21 @@ function buildGraph(): { nodes: GNode[]; links: GLink[] } {
       }
     }
   }
-
   return { nodes, links }
 }
 
-export function GraphCanvas({ crawled, sidebarOpen, onToggleSidebar }: Props) {
-  const { nodes, links } = useMemo(buildGraph, [])
-  // Draw rim nodes first so inner/core nodes overlap cleanly on top.
-  const drawOrder = useMemo(() => [...nodes].sort((a, b) => b.layer - a.layer), [nodes])
+export function GraphCanvas({
+  crawled,
+  sidebarOpen,
+  onToggleSidebar,
+  nodes,
+  links,
+  chains,
+  streaming,
+  streamError,
+}: Props) {
+  const empty = useMemo(buildEmptyGraph, [])
+  const drawOrder = useMemo(() => [...empty.nodes].sort((a, b) => b.layer - a.layer), [empty.nodes])
 
   return (
     <section className={`${panel} relative flex flex-1 flex-col overflow-hidden`}>
@@ -86,15 +90,22 @@ export function GraphCanvas({ crawled, sidebarOpen, onToggleSidebar }: Props) {
         <SidebarToggle onClick={onToggleSidebar} open={sidebarOpen} />
         <span className="font-sans text-[11px] uppercase tracking-[0.14em] text-ink-soft">
           Canvas
+          {crawled && (
+            <span className="ml-1 normal-case tracking-normal text-ink-soft/70">
+              · {streaming ? 'tracing paths…' : 'done'}
+            </span>
+          )}
         </span>
       </div>
 
-      {crawled ? (
-        <div className="flex flex-1 items-center justify-center">
-          <p className="px-8 text-center font-sans text-sm text-ink-soft">
-            The crawl runs here. Graph rendering comes next, once the paths endpoint streams in.
-          </p>
+      {streamError && (
+        <div className="absolute right-4 top-4 z-10 max-w-xs rounded-lg border border-danger/30 bg-paper px-3 py-1.5 text-[12px] text-danger shadow-sm">
+          {streamError}
         </div>
+      )}
+
+      {crawled ? (
+        <ForceGraph nodes={nodes} links={links} chains={chains} />
       ) : (
         <>
           <div className="relative min-h-0 flex-1">
@@ -111,14 +122,13 @@ export function GraphCanvas({ crawled, sidebarOpen, onToggleSidebar }: Props) {
               </defs>
 
               <g stroke="var(--color-ink-soft)" strokeOpacity="0.22" strokeWidth="1">
-                {links.map((l, i) => {
-                  const a = nodes[l.a]
-                  const b = nodes[l.b]
+                {empty.links.map((l, i) => {
+                  const a = empty.nodes[l.a]
+                  const b = empty.nodes[l.b]
                   return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
                 })}
               </g>
 
-              {/* soft pulsing halo behind Philosophy */}
               <circle
                 cx={CX}
                 cy={CY}

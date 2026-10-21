@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Article, SearchResult, TitlesResponse } from '../types'
+import type { Article, CrawlMode, SearchResult, TitlesResponse } from '../types'
 import { Wordmark } from '../Wordmark'
 import { panel } from '../ui'
 
@@ -9,9 +9,19 @@ type Props = {
   onRemove: (pageid: number) => void
   onFindPaths: () => void
   max: number
+  mode: CrawlMode
+  onModeChange: (m: CrawlMode) => void
 }
 
-export function SearchPanel({ selected, onAdd, onRemove, onFindPaths, max }: Props) {
+export function SearchPanel({
+  selected,
+  onAdd,
+  onRemove,
+  onFindPaths,
+  max,
+  mode,
+  onModeChange,
+}: Props) {
   const [keyword, setKeyword] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -86,6 +96,19 @@ export function SearchPanel({ selected, onAdd, onRemove, onFindPaths, max }: Pro
       <div className="flex flex-wrap items-center gap-3">
         <Wordmark />
         <div className="ml-auto flex items-center gap-3">
+          <div className="flex overflow-hidden rounded-full border border-edge text-xs">
+            {(['relaxed', 'strict'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => onModeChange(m)}
+                className={`px-3 py-1 font-sans capitalize transition ${
+                  mode === m ? 'bg-accent text-paper' : 'text-ink-soft hover:bg-paper-2'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
           <span className="font-mono text-xs text-ink-soft">
             {selected.length} / {max}
           </span>

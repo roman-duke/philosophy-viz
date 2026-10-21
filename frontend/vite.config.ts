@@ -12,7 +12,7 @@ export default defineConfig({
     // also work in prod, where Go serves both the static build and the API.
     proxy: {
       '/titles': 'http://localhost:8080',
-      // '/paths' will go here too when we wire up the SSE crawl feed.
+      '/crawl': 'http://localhost:8080', // SSE crawl stream (POST + streamed response)
     },
   },
 })

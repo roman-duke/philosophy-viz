@@ -1,10 +1,15 @@
 import { useState } from 'react'
-import type { Article } from '../types'
+import type { Article, ChainInfo } from '../types'
 import { Wordmark } from '../Wordmark'
 import { panel } from '../ui'
 
+const display = (s: string) => s.replace(/_/g, ' ')
+const wikiUrl = (title: string) =>
+  `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`
+
 type Props = {
   selected: Article[]
+  chains: Record<string, ChainInfo>
   onRemove: (pageid: number) => void
   crawled: boolean
   max: number
@@ -12,7 +17,15 @@ type Props = {
   onClose: () => void
 }
 
-export function Sidebar({ selected, onRemove, crawled, max, onBackToSearch, onClose }: Props) {
+export function Sidebar({
+  selected,
+  chains,
+  onRemove,
+  crawled,
+  max,
+  onBackToSearch,
+  onClose,
+}: Props) {
   const [openId, setOpenId] = useState<number | null>(null)
 
   return (
@@ -56,6 +69,7 @@ export function Sidebar({ selected, onRemove, crawled, max, onBackToSearch, onCl
         ) : (
           selected.map((a) => {
             const isOpen = openId === a.pageid
+            const chain = chains[a.title]
             return (
               <div key={a.pageid}>
                 <div className="flex items-center gap-1">
@@ -65,12 +79,15 @@ export function Sidebar({ selected, onRemove, crawled, max, onBackToSearch, onCl
                     className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-paper-2"
                   >
                     <Chevron open={isOpen} />
+                    {crawled && <StatusDot chain={chain} />}
                     <span className="min-w-0 flex-1 truncate font-display text-[15px] text-ink">
                       {a.title}
                     </span>
-                    <span className="shrink-0 font-mono text-[11px] text-ink-soft">
-                      {crawled ? '— hops' : ''}
-                    </span>
+                    {crawled && chain && (
+                      <span className="shrink-0 font-mono text-[11px] text-ink-soft">
+                        {Math.max(0, chain.path.length - 1)} hops
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={() => onRemove(a.pageid)}
@@ -83,11 +100,44 @@ export function Sidebar({ selected, onRemove, crawled, max, onBackToSearch, onCl
 
                 {isOpen && (
                   <div className="animate-[fade-rise_0.2s_ease] pb-3 pl-9 pr-3">
-                    <p className="font-sans text-[13px] leading-relaxed text-ink-soft">
-                      {crawled
-                        ? 'Path tracing isn’t wired up yet — the crawl endpoint is still to come.'
-                        : 'Run Find paths to trace this article’s route to Philosophy.'}
-                    </p>
+                    {crawled && chain ? (
+                      <>
+                        <ol className="space-y-1">
+                          {chain.path.map((p, i) => (
+                            <li key={i} className="flex items-baseline gap-2 font-sans text-[12px]">
+                              <span className="w-8 shrink-0 font-mono text-[10px] text-ink-soft/60">
+                                {i === 0 ? 'start' : i}
+                              </span>
+                              <a
+                                href={wikiUrl(p)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`truncate hover:underline ${
+                                  p === 'Philosophy' ? 'text-accent' : 'text-ink hover:text-accent'
+                                }`}
+                              >
+                                {display(p)}
+                              </a>
+                            </li>
+                          ))}
+                        </ol>
+                        {chain.done && (
+                          <p className="mt-2 font-sans text-[12px] text-accent">Reached Philosophy.</p>
+                        )}
+                        {chain.looped && (
+                          <p className="mt-2 font-sans text-[12px] text-[#e6983f]">
+                            Hit {chain.loops?.length ?? 1} loop{(chain.loops?.length ?? 1) > 1 ? 's' : ''} along the way.
+                          </p>
+                        )}
+                        {chain.error && (
+                          <p className="mt-2 font-sans text-[12px] text-danger">{chain.error}</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="font-sans text-[13px] leading-relaxed text-ink-soft">
+                        Run Find paths to trace this article’s route to Philosophy.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -97,6 +147,14 @@ export function Sidebar({ selected, onRemove, crawled, max, onBackToSearch, onCl
       </div>
     </aside>
   )
+}
+
+function StatusDot({ chain }: { chain?: ChainInfo }) {
+  let color = 'bg-ink-soft/40'
+  if (chain?.error) color = 'bg-danger'
+  else if (chain?.done) color = 'bg-accent'
+  else if (chain?.looped) color = 'bg-[#e6983f]'
+  return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${color}`} aria-hidden="true" />
 }
 
 function Chevron({ open }: { open: boolean }) {
