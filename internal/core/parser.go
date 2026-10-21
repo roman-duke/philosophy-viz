@@ -34,6 +34,25 @@ const (
 	Magenta = "\033[35m"
 )
 
+// html void elements that do not have a closing tag
+var voidElementsMap = map[atom.Atom]bool{
+	atom.Area:   true,
+	atom.Br:     true,
+	atom.Base:   true,
+	atom.Col:    true,
+	atom.Embed:  true,
+	atom.Hr:     true,
+	atom.Img:    true,
+	atom.Input:  true,
+	atom.Link:   true,
+	atom.Meta:   true,
+	atom.Param:  true,
+	atom.Source: true,
+	atom.Track:  true,
+	atom.Wbr:    true,
+	atom.B:      true,
+}
+
 // ===================================== errors ============================================//
 var ErrLoopLink = errors.New("link causes loop")
 
@@ -108,11 +127,9 @@ func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 
 			switch dup {
 			case DupInPrev:
-				fmt.Println("Duplicate encountered again!")
 				continue
 
 			case DupNotInPrev:
-				fmt.Println("Duplicate encountered!")
 				return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
 
 			case NoDup:
@@ -146,6 +163,8 @@ func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, r bool, tokenizer *ht
 
 	switch tokenType {
 	case html.ErrorToken:
+		fmt.Println("state of the parenthesis queue", pQ)
+		fmt.Println("state of the tags queue", tags)
 		if tokenizer.Err() == io.EOF {
 			return nil, io.EOF
 		}
@@ -180,7 +199,7 @@ func tokenize(tAtom, twAtom atom.Atom, pQ, tags *[]string, r bool, tokenizer *ht
 		// it might be best to just have a whitelist of tags that the anchor links can
 		// be found in, but given that the currently observed case is just one (bold tags)
 		// then that is basically an overkill at the moment
-		if token.DataAtom != atom.B {
+		if !voidElementsMap[token.DataAtom] {
 			switch token.Type {
 			case html.StartTagToken:
 				*tags = append(*tags, token.Data)
