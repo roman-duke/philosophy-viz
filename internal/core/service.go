@@ -37,6 +37,9 @@ const (
 
 //===========================================================================================//
 
+// TODO: Bounding concurrency in Go: Semaphores (buffered-channel pattern)
+// work on the above implementation so as to limit the number of in-flight
+// go routines and hence reduce the chances of hammering Wiki's server
 type Service struct {
 	client *http.Client
 	store  *Store
