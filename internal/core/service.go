@@ -43,6 +43,8 @@ const (
 
 // work on caching already fetched pages so that backtracks don't end up fetching previously
 // retrieved content
+
+// work on sqlite implementation
 type Service struct {
 	client *http.Client
 	store  *Store
