@@ -29,6 +29,7 @@ type Link struct {
 // function to recursively get to philosophy
 // this mode argument should ideally be a sum type
 func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup, ctx context.Context) {
+
 	var node string
 	if len(links) > 0 {
 		lastLink := links[len(links)-1]
@@ -43,6 +44,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	var (
 		err      error
 		loopMode bool
+		res      *WikiPageRes
 	)
 
 	// our terminator case
@@ -60,7 +62,16 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	// sleep a bit, so as not to constantly bombard Wiki's server
 	time.Sleep(time.Millisecond * 500)
 	// ==============================================================//
-	res, err := fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
+
+	select {
+	case s.sem <- struct{}{}:
+		defer func() { <-s.sem }()
+		res, err = fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
+
+	case <-ctx.Done():
+		wg.Done()
+		return
+	}
 
 	if err != nil {
 		c <- FetchErr{key: id, err: err}
@@ -150,6 +161,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 
 		s.getToPhilosophy(id, mode, links, params, c, wg, ctx)
 	}
+
 }
 
 // ============================== HELPER FUNCTION ===================================//

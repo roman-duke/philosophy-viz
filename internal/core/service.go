@@ -49,13 +49,16 @@ const (
 type Service struct {
 	client *http.Client
 	store  *Store
+	sem    chan struct{}
 }
 
 func NewService(st *Store) *Service {
 	// create the client.
 	c := createClient()
 
-	return &Service{client: c, store: st}
+	// create the buffered channel to be used as a semaphore (to bound our concurrency)
+	s := make(chan struct{}, 20)
+	return &Service{client: c, store: st, sem: s}
 }
 
 // TOOD: thread the context to the fetch function to enable us cancel any in-flight request made to
@@ -256,11 +259,11 @@ func (FetchErr) isResult()     {}
 
 // ============================== RELEVANT DTO's =====================================//
 type linkDTO struct {
-	Title           string    `json:"title"`
-	LinkAddress     string    `json:"linkAddress"`
-	Redirect        bool      `json:"redirect"`
-	RedirectAddress string    `json:"redirectAddress"`
-	LoopBound       bool      `json:"loopBound"`
+	Title           string `json:"title"`
+	LinkAddress     string `json:"linkAddress"`
+	Redirect        bool   `json:"redirect"`
+	RedirectAddress string `json:"redirectAddress"`
+	LoopBound       bool   `json:"loopBound"`
 }
 
 type nodeDTO struct {
