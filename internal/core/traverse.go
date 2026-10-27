@@ -41,9 +41,8 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 
 	// declare relevant variables to help us with the tail recursion
 	var (
-		err      error
-		loopMode bool
-		res      *WikiPageRes
+		err error
+		res *WikiPageRes
 	)
 
 	// our terminator case
@@ -65,7 +64,6 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 		wg.Done()
 		return
 	}
-
 
 	select {
 	case s.sem <- struct{}{}:
@@ -92,9 +90,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	// declare our new link variable
 	var newLink Link
 
-	if errors.Is(err, ErrLoopLink) {
-		loopMode = true
-	} else if err != nil {
+	if err != nil {
 		c <- ParsingErr{key: id, err: err}
 
 		defer wg.Done()
@@ -130,7 +126,7 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 
 	// if the new link causes a loop, then we pop it from our array and add
 	// it as a "child" to the previous element in the array
-	if loopMode {
+	if parseRes.isLoop {
 		lastElem := links[len(links)-1]
 		lastElem.loopBound = true
 

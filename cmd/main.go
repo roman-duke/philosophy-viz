@@ -6,17 +6,25 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/roman-duke/philosophy-viz/internal/adapters/store"
 	"github.com/roman-duke/philosophy-viz/internal/adapters/web"
 	"github.com/roman-duke/philosophy-viz/internal/core"
 )
 
 func main() {
-	svc := core.NewService(nil)
+	store, err := store.NewStorage("file:cache.db?_journal_mode=WAL&busy_timeout=5000")
+
+	if err != nil {
+		log.Fatalf("\033[32m%v\033[0m", err)
+		os.Exit(1)
+	}
+
+	svc := core.NewService(store)
 	h := web.NewHandler(svc)
 
 	fmt.Printf("\033[35mServer listening at http://localhost:%v\033[0m\n", 8080)
 
-	err := http.ListenAndServe(":8080", h.Routes())
+	err = http.ListenAndServe(":8080", h.Routes())
 
 	if err != nil {
 		log.Fatalf("\033[32m%v\033[0m", err)

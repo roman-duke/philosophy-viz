@@ -59,6 +59,7 @@ var ErrLoopLink = errors.New("link causes loop")
 type ParseRes struct {
 	linkAddr string
 	redirect bool
+	isLoop   bool
 }
 
 // this function receives the returned decoded json as input, then parses to build a DOM tree
@@ -130,7 +131,7 @@ func parser(arg *WikiPageRes, findD func(s string) DupKind) (*ParseRes, error) {
 				continue
 
 			case DupNotInPrev:
-				return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, ErrLoopLink
+				return &ParseRes{linkAddr: validLink, redirect: redirectFlag, isLoop: true}, nil
 
 			case NoDup:
 				return &ParseRes{linkAddr: validLink, redirect: redirectFlag}, nil

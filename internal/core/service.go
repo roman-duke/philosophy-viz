@@ -51,12 +51,12 @@ const (
 // consumer.
 type Service struct {
 	client *http.Client
-	store  *Store
+	store  Store
 	sem    chan struct{}
 	limiter *rate.Limiter
 }
 
-func NewService(st *Store) *Service {
+func NewService(st Store) *Service {
 	// create the client.
 	c := createClient()
 
