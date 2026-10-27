@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 )
 
 type Link struct {
@@ -58,15 +57,21 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	// update the map of url.Values with the new page key
 	params.Set("page", node)
 
-	// ============================ SLEEP ===========================//
-	// sleep a bit, so as not to constantly bombard Wiki's server
-	time.Sleep(time.Millisecond * 500)
-	// ==============================================================//
+	// collect the necessary token from the token bucket
+	err = s.limiter.Wait(ctx)
+
+	if err != nil {
+		// bail if the context is cancelled for some reason
+		wg.Done()
+		return
+	}
+
 
 	select {
 	case s.sem <- struct{}{}:
-		defer func() { <-s.sem }()
+		// rate limit so as not to bombard Wiki's server
 		res, err = fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
+		func() { <-s.sem }()
 
 	case <-ctx.Done():
 		wg.Done()

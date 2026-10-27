@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
 )
 
 var BASE_URL = "https://en.wikipedia.org/w/api.php"
@@ -50,6 +53,7 @@ type Service struct {
 	client *http.Client
 	store  *Store
 	sem    chan struct{}
+	limiter *rate.Limiter
 }
 
 func NewService(st *Store) *Service {
@@ -58,7 +62,11 @@ func NewService(st *Store) *Service {
 
 	// create the buffered channel to be used as a semaphore (to bound our concurrency)
 	s := make(chan struct{}, 20)
-	return &Service{client: c, store: st, sem: s}
+
+	// create a new rate limiter to throttle the requests per second
+
+	l := rate.NewLimiter(rate.Every(400 * time.Millisecond), 5)
+	return &Service{client: c, store: st, sem: s, limiter: l}
 }
 
 // TOOD: thread the context to the fetch function to enable us cancel any in-flight request made to
