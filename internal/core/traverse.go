@@ -2,7 +2,10 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"log"
+
 	// "fmt"
 	"net/url"
 	"slices"
@@ -30,12 +33,16 @@ type Link struct {
 func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, params url.Values, c chan Result, wg *sync.WaitGroup, ctx context.Context) {
 
 	var node string
+	var address string
+
 	if len(links) > 0 {
 		lastLink := links[len(links)-1]
-		node = strings.TrimPrefix(lastLink.linkAddress, "/wiki/")
+		address = lastLink.linkAddress
+		node = strings.TrimPrefix(address, "/wiki/")
 
 		if lastLink.redirect {
-			node = strings.TrimPrefix(lastLink.redirectAddress, "/wiki/")
+			address = lastLink.redirectAddress
+			node = strings.TrimPrefix(address, "/wiki/")
 		}
 	}
 
@@ -56,39 +63,56 @@ func (s *Service) getToPhilosophy(id string, mode TraverseMode, links []Link, pa
 	// update the map of url.Values with the new page key
 	params.Set("page", node)
 
-	// collect the necessary token from the token bucket
-	err = s.limiter.Wait(ctx)
+	//=========================== Retrieve from cache ===============================//
+	result, err := s.store.Get(address)
 
 	if err != nil {
-		// bail if the context is cancelled for some reason
-		wg.Done()
-		return
+		if errors.Is(err, sql.ErrNoRows) {
+			// do nothing if we got our cache miss error
+			// however other db errors should be logged
+		} else {
+			log.Printf("\033[31munexpected db error: %v\033[0m", err)
+		}
+
+		// collect the necessary token from the token bucket
+		err = s.limiter.Wait(ctx)
+
+		if err != nil {
+			// bail if the context is cancelled for some reason
+			wg.Done()
+			return
+		}
+
+		select {
+		case s.sem <- struct{}{}:
+			// rate limit so as not to bombard Wiki's server
+			res, err = fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
+			func() { <-s.sem }()
+
+			err = s.store.Insert(address, *res)
+
+		case <-ctx.Done():
+			wg.Done()
+			return
+		}
+
+		if err != nil {
+			c <- FetchErr{key: id, err: err}
+			defer wg.Done()
+
+			return
+		}
+
+	} else {
+		res = result
 	}
 
-	select {
-	case s.sem <- struct{}{}:
-		// rate limit so as not to bombard Wiki's server
-		res, err = fetch[WikiPageRes](ctx, s.client, BASE_URL, params)
-		func() { <-s.sem }()
-
-	case <-ctx.Done():
-		wg.Done()
-		return
-	}
-
-	if err != nil {
-		c <- FetchErr{key: id, err: err}
-		defer wg.Done()
-
-		return
-	}
+	// declare our new link variable
+	var newLink Link
 
 	// call the parse function here to help us extract the relevant link
 	dupFinder := findDuplicate(links)
 	parseRes, err := parser(res, dupFinder)
-
-	// declare our new link variable
-	var newLink Link
 
 	if err != nil {
 		c <- ParsingErr{key: id, err: err}

@@ -10,3 +10,6 @@ npm-debug.log*
 
 # local scratch / experiments (moved out of the repo root)
 test_sandbox/
+
+# runtime artifacts
+cache.db*

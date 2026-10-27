@@ -12,10 +12,10 @@ import (
 )
 
 func main() {
-	store, err := store.NewStorage("file:cache.db?_journal_mode=WAL&busy_timeout=5000")
+	store, err := store.NewStorage("file:cache.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 
 	if err != nil {
-		log.Fatalf("\033[32m%v\033[0m", err)
+		log.Fatalf("\033[31m%v\033[0m", err)
 		os.Exit(1)
 	}
 
@@ -27,7 +27,7 @@ func main() {
 	err = http.ListenAndServe(":8080", h.Routes())
 
 	if err != nil {
-		log.Fatalf("\033[32m%v\033[0m", err)
+		log.Fatalf("\033[31m%v\033[0m", err)
 		os.Exit(1)
 	}
 }
