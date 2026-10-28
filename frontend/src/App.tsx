@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   Article,
   ChainInfo,
@@ -16,6 +16,12 @@ import { GraphCanvas } from './components/GraphCanvas'
 const MAX = 30
 const display = (s: string) => (s ?? '').replace(/_/g, ' ')
 
+type QueuedEvent =
+  | { t: 'node'; key: string; value: WireLink }
+  | { t: 'redirect'; key: string; address: string }
+  | { t: 'loop'; key: string }
+  | { t: 'error'; key: string; message: string }
+
 export default function App() {
   const [selected, setSelected] = useState<Article[]>([])
   const [mode, setMode] = useState<CrawlMode>('relaxed')
@@ -32,6 +38,19 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null)
   const tailRef = useRef<Record<string, string>>({}) // current main-path tail per seed
   const pathRef = useRef<Record<string, string[]>>({}) // main path per seed
+
+  // SSE hops arrive many-per-second; buffer them and apply on an animation frame
+  // so React re-renders at most once per paint instead of once per hop (keeps the
+  // main thread free enough that taps — e.g. the sidebar close — aren't dropped).
+  const eventBufRef = useRef<QueuedEvent[]>([])
+  const rafRef = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+    },
+    [],
+  )
 
   function addArticle(a: Article) {
     setSelected((prev) =>
@@ -131,9 +150,42 @@ export default function App() {
     setChains((cs) => (cs[key] ? { ...cs, [key]: { ...cs[key], error: message } } : cs))
   }
 
+  // Drain the buffered events in one pass. Running them inside a single tick lets
+  // React 18 batch all the setStates into one render.
+  function flushEvents() {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    const batch = eventBufRef.current
+    if (batch.length === 0) return
+    eventBufRef.current = []
+    for (const e of batch) {
+      if (e.t === 'node') addHop(e.key, e.value)
+      else if (e.t === 'redirect') markRedirect(e.key, e.address)
+      else if (e.t === 'loop') markLoop(e.key)
+      else markError(e.key, e.message)
+    }
+  }
+
+  function enqueue(e: QueuedEvent) {
+    eventBufRef.current.push(e)
+    rafRef.current ??= requestAnimationFrame(flushEvents)
+  }
+
+  // drop anything buffered and cancel a pending flush (on abort / new crawl)
+  function cancelPending() {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    eventBufRef.current = []
+  }
+
   function findPaths() {
     if (selected.length === 0) return
     abortRef.current?.abort()
+    cancelPending()
 
     const seeds = selected.map((a) => a.title)
     tailRef.current = Object.fromEntries(seeds.map((s) => [s, s]))
@@ -151,11 +203,14 @@ export default function App() {
     startCrawl(
       { mode, articles: seeds },
       {
-        onNode: addHop,
-        onRedirect: markRedirect,
-        onLoop: markLoop,
-        onError: markError,
-        onDone: () => setStreaming(false),
+        onNode: (key, value) => enqueue({ t: 'node', key, value }),
+        onRedirect: (key, address) => enqueue({ t: 'redirect', key, address }),
+        onLoop: (key) => enqueue({ t: 'loop', key }),
+        onError: (key, message) => enqueue({ t: 'error', key, message }),
+        onDone: () => {
+          flushEvents() // apply any buffered tail hops before marking done
+          setStreaming(false)
+        },
       },
       ctrl.signal,
     ).catch((err) => {
@@ -167,6 +222,7 @@ export default function App() {
 
   function backToSearch() {
     abortRef.current?.abort()
+    cancelPending()
     setStreaming(false)
     setCrawled(false)
     setSidebarOpen(false)

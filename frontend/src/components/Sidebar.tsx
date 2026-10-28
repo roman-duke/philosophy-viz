@@ -38,7 +38,7 @@ export function Sidebar({
           <button
             onClick={onClose}
             aria-label="Hide selection panel"
-            className="shrink-0 rounded-md px-2 py-1 font-mono text-ink-soft transition hover:bg-paper-2 hover:text-ink"
+            className="-my-1 -mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-md font-mono text-lg leading-none text-ink-soft transition hover:bg-paper-2 hover:text-ink"
           >
             ×
           </button>
