@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- paper tile so the mark reads on both light and dark tab bars -->
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="#faf8f4" stroke="#e4dfd5"/>
+  <!-- convergence: cool outer nodes (one via a two-hop relay) fanning into the hot Philosophy node -->
+  <g stroke="#6a655c" stroke-width="1.9" stroke-linecap="round">
+    <line x1="6" y1="15" x2="22" y2="16"/>
+    <line x1="6" y1="23" x2="22" y2="16"/>
+    <line x1="7" y1="7" x2="14" y2="9"/>
+    <line x1="14" y1="9" x2="22" y2="16"/>
+  </g>
+  <g fill="#6a655c">
+    <circle cx="6" cy="15" r="2.4"/>
+    <circle cx="6" cy="23" r="2.4"/>
+    <circle cx="7" cy="7" r="2.4"/>
+    <circle cx="14" cy="9" r="2.4"/>
+  </g>
+  <circle cx="22" cy="16" r="4.8" fill="#ff4133"/>
+</svg>

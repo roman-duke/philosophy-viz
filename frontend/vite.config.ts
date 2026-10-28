@@ -15,4 +15,8 @@ export default defineConfig({
       '/crawl': 'http://localhost:8080', // SSE crawl stream (POST + streamed response)
     },
   },
+  build: {
+    outDir: "../internal/adapters/web/dist",
+    emptyOutDir: true,
+  }
 })
