@@ -1,0 +1,18 @@
+# keep the build context small and avoid clobbering the freshly-built frontend
+
+.git
+.gitignore
+
+# node deps + any stale local frontend build (the image rebuilds dist from source)
+**/node_modules
+internal/adapters/web/dist
+
+# local sqlite cache (runtime artifact, not for the image)
+cache.db
+cache.db-wal
+cache.db-shm
+
+# docker + fly meta (not needed inside the build context)
+Dockerfile
+.dockerignore
+fly.toml
